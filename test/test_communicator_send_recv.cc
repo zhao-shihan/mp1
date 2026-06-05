@@ -52,7 +52,7 @@ bool send_recv_test() {
 
 
 template<typename T>
-bool send_recv_test(const T &data) {
+bool send_recv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -80,7 +80,7 @@ bool send_recv_test(const T &data) {
 
 
 template<typename T>
-bool send_recv_iter_test(const T &data) {
+bool send_recv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -118,7 +118,7 @@ bool bsend_recv_test() {
 
 
 template<typename T>
-bool bsend_recv_test(const T &data) {
+bool bsend_recv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -153,7 +153,7 @@ bool bsend_recv_test(const T &data) {
 
 
 template<typename T>
-bool bsend_recv_iter_test(const T &data) {
+bool bsend_recv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -196,7 +196,7 @@ bool ssend_recv_test() {
 
 
 template<typename T>
-bool ssend_recv_test(const T &data) {
+bool ssend_recv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -224,7 +224,7 @@ bool ssend_recv_test(const T &data) {
 
 
 template<typename T>
-bool ssend_recv_iter_test(const T &data) {
+bool ssend_recv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -264,7 +264,7 @@ bool rsend_recv_test() {
 
 
 template<typename T>
-bool rsend_recv_test(const T &data) {
+bool rsend_recv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -320,7 +320,7 @@ bool rsend_recv_test(const T &data) {
 
 
 template<typename T>
-bool rsend_recv_iter_test(const T &data) {
+bool rsend_recv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -399,6 +399,10 @@ BOOST_AUTO_TEST_CASE(send_recv) {
   BOOST_TEST(send_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(send_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(send_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
+  // MPLR_REFLECTION_TEMPLATE types
+  BOOST_TEST(send_recv_test(wrapper<int>{42}));
+  BOOST_TEST(send_recv_test(wrapper<double>{3.14}));
+  BOOST_TEST(send_recv_test(pair_like<int, double>{1, 2.3}));
 #if __cplusplus >= 202002L
   {
     int array[]{1, 2, 3, 4, 5};
@@ -459,6 +463,10 @@ BOOST_AUTO_TEST_CASE(bsend_recv) {
   BOOST_TEST(bsend_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(bsend_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(bsend_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
+  // MPLR_REFLECTION_TEMPLATE types
+  BOOST_TEST(bsend_recv_test(wrapper<int>{42}));
+  BOOST_TEST(bsend_recv_test(wrapper<double>{3.14}));
+  BOOST_TEST(bsend_recv_test(pair_like<int, double>{1, 2.3}));
 #if __cplusplus >= 202002L
   {
     int array[]{1, 2, 3, 4, 5};
@@ -519,6 +527,10 @@ BOOST_AUTO_TEST_CASE(ssend_recv) {
   BOOST_TEST(ssend_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(ssend_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(ssend_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
+  // MPLR_REFLECTION_TEMPLATE types
+  BOOST_TEST(ssend_recv_test(wrapper<int>{42}));
+  BOOST_TEST(ssend_recv_test(wrapper<double>{3.14}));
+  BOOST_TEST(ssend_recv_test(pair_like<int, double>{1, 2.3}));
 #if __cplusplus >= 202002L
   {
     int array[]{1, 2, 3, 4, 5};
@@ -579,6 +591,10 @@ BOOST_AUTO_TEST_CASE(rsend_recv) {
   BOOST_TEST(rsend_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(rsend_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(rsend_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
+  // MPLR_REFLECTION_TEMPLATE types
+  BOOST_TEST(rsend_recv_test(wrapper<int>{42}));
+  BOOST_TEST(rsend_recv_test(wrapper<double>{3.14}));
+  BOOST_TEST(rsend_recv_test(pair_like<int, double>{1, 2.3}));
 #if __cplusplus >= 202002L
   {
     int array[]{1, 2, 3, 4, 5};

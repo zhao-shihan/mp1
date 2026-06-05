@@ -788,20 +788,29 @@ namespace mplr {
 
 #define MPLR_REGISTER(element) layout_.register_element(str.element);
 
-#define MPLR_REFLECTION(STRUCT, ...)                                    \
-  namespace mplr {                                                      \
-    template<>                                                          \
-    class struct_builder<STRUCT> : public base_struct_builder<STRUCT> { \
-      struct_layout<STRUCT> layout_;                                    \
-                                                                        \
-    public:                                                             \
-      struct_builder() {                                                \
-        STRUCT str;                                                     \
-        layout_.register_struct(str);                                   \
-        MPLR_CALL_MACRO_X_FOR_EACH(MPLR_REGISTER, __VA_ARGS__)          \
-        define_struct(layout_);                                         \
-      }                                                                 \
-    };                                                                  \
+#define MPLR_UNWRAP_IMPL(...) __VA_ARGS__
+#define MPLR_UNWRAP(...) MPLR_UNWRAP_IMPL __VA_ARGS__
+
+#define MPLR_REFLECTION_IMPL(TEMPLATE_HEADER, STRUCT_TYPE, ...)                   \
+  namespace mplr {                                                                \
+    TEMPLATE_HEADER                                                               \
+    class struct_builder<STRUCT_TYPE> : public base_struct_builder<STRUCT_TYPE> { \
+      struct_layout<STRUCT_TYPE> layout_;                                         \
+                                                                                  \
+    public:                                                                       \
+      struct_builder() {                                                          \
+        STRUCT_TYPE str;                                                          \
+        layout_.register_struct(str);                                             \
+        MPLR_CALL_MACRO_X_FOR_EACH(MPLR_REGISTER, __VA_ARGS__)                    \
+        this->define_struct(layout_);                                             \
+      }                                                                           \
+    };                                                                            \
   }
+
+#define MPLR_REFLECTION(STRUCT, ...) MPLR_REFLECTION_IMPL(template<>, STRUCT, __VA_ARGS__)
+
+#define MPLR_REFLECTION_TEMPLATE(TEMPLATE_PARAMS, STRUCT_TYPE, ...)                      \
+  MPLR_REFLECTION_IMPL(template<MPLR_UNWRAP(TEMPLATE_PARAMS)>, MPLR_UNWRAP(STRUCT_TYPE), \
+                       __VA_ARGS__)
 
 #endif

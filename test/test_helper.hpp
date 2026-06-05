@@ -32,18 +32,18 @@ struct has_begin_end<
 struct tuple {
   int a{0};
   double b{0};
-  tuple &operator++() {
+  tuple& operator++() {
     ++a;
     ++b;
     return *this;
   }
 };
 
-inline bool operator==(const tuple &t1, const tuple &t2) {
+inline bool operator==(const tuple& t1, const tuple& t2) {
   return t1.a == t2.a and t1.b == t2.b;
 }
 
-inline tuple operator+(const tuple &t1, const tuple &t2) {
+inline tuple operator+(const tuple& t1, const tuple& t2) {
   return tuple{t1.a + t2.a, t1.b + t2.b};
 }
 
@@ -51,9 +51,39 @@ MPLR_REFLECTION(tuple, a, b)
 
 
 template<typename T>
+struct wrapper {
+  T data{};
+};
+
+template<typename T>
+inline bool operator==(const wrapper<T>& w1, const wrapper<T>& w2) {
+  return w1.data == w2.data;
+}
+
+template<typename T>
+inline wrapper<T> operator+(const wrapper<T>& w1, const wrapper<T>& w2) {
+  return wrapper<T>{w1.data + w2.data};
+}
+
+template<typename T, typename U>
+struct pair_like {
+  T first{};
+  U second{};
+};
+
+template<typename T, typename U>
+inline bool operator==(const pair_like<T, U>& p1, const pair_like<T, U>& p2) {
+  return p1.first == p2.first && p1.second == p2.second;
+}
+
+MPLR_REFLECTION_TEMPLATE((typename T), (wrapper<T>), data)
+MPLR_REFLECTION_TEMPLATE((typename T, typename U), (pair_like<T, U>), first, second)
+
+
+template<typename T>
 class add {
 public:
-  T operator()(const T &a, const T &b) const {
+  T operator()(const T& a, const T& b) const {
     return a + b;
   }
 };
