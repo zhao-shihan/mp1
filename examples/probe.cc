@@ -7,7 +7,7 @@
 
 
 template<typename I>
-void print_range(const char *const str, I i_1, I i_2) {
+void print_range(const char* const str, I i_1, I i_2) {
   std::cout << str;
   while (i_1 != i_2) {
     std::cout << (*i_1);

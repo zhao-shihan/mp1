@@ -31,7 +31,7 @@ int main() {
     file.write_at_all(vec.size() * comm_world.rank(), vec.data(), write_layout);
     // close file
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
   }
   return EXIT_SUCCESS;

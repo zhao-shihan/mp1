@@ -28,7 +28,7 @@ int main() {
     std::vector<int> y((c_size * c_size + c_size) / 2);  // receive buffer
     comm_world.gatherv(0, x.data(), l, y.data(), ls);    // receive data
     // print data
-    for (const auto &f : y)
+    for (const auto& f : y)
       std::cout << f << '\n';
   } else
     // non-root ranks just send

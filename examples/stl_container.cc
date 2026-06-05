@@ -13,15 +13,15 @@
 
 // print elements of a pair
 template<typename ch, typename tr, typename T1, typename T2>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::pair<T1, T2> &p) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::pair<T1, T2>& p) {
   return out << '(' << p.first << ',' << p.second << ')';
 }
 
 
 // print all elements of a container
 template<typename ch, typename tr, typename C>
-std::basic_ostream<ch, tr> &print_container(std::basic_ostream<ch, tr> &out, const C &c) {
+std::basic_ostream<ch, tr>& print_container(std::basic_ostream<ch, tr>& out, const C& c) {
   out << '(';
   for (auto i{std::begin(c)}; i != std::end(c); ++i) {
     out << (*i);
@@ -34,46 +34,46 @@ std::basic_ostream<ch, tr> &print_container(std::basic_ostream<ch, tr> &out, con
 
 // print all elements of a vector
 template<typename ch, typename tr, typename T, typename A>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::vector<T, A> &v) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::vector<T, A>& v) {
   return print_container(out, v);
 }
 
 
 // print all elements of a list
 template<typename ch, typename tr, typename T, typename A>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::list<T, A> &l) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::list<T, A>& l) {
   return print_container(out, l);
 }
 
 
 // print all elements of a map
 template<typename ch, typename tr, typename K, typename C, typename A>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::map<K, C, A> &m) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::map<K, C, A>& m) {
   return print_container(out, m);
 }
 
 
 // print all elements of a map
 template<typename ch, typename tr, typename T>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::valarray<T> &v) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::valarray<T>& v) {
   return print_container(out, v);
 }
 
 
 // send an STL container
 template<typename T>
-void send(const mplr::communicator &comm, const T &x) {
+void send(const mplr::communicator& comm, const T& x) {
   comm.send(x, 1);
 }
 
 
 // send an STL container
 template<typename T>
-void isend(const mplr::communicator &comm, const T &x) {
+void isend(const mplr::communicator& comm, const T& x) {
   mplr::irequest r{comm.isend(x, 1)};
   r.wait();
 }
@@ -81,7 +81,7 @@ void isend(const mplr::communicator &comm, const T &x) {
 
 // receive an STL container
 template<typename T>
-void recv(const mplr::communicator &comm) {
+void recv(const mplr::communicator& comm) {
   using value_type = mplr::detail::remove_const_from_members_t<typename T::value_type>;
   T x;
   auto s{comm.recv(x, 0)};
@@ -91,7 +91,7 @@ void recv(const mplr::communicator &comm) {
 
 // receive an STL container
 template<typename T>
-void irecv(const mplr::communicator &comm) {
+void irecv(const mplr::communicator& comm) {
   using value_type = mplr::detail::remove_const_from_members_t<typename T::value_type>;
   T x;
   mplr::irequest r{comm.irecv(x, 0)};

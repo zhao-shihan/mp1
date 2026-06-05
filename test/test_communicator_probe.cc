@@ -16,7 +16,7 @@
 
 
 template<typename T>
-bool probe_test(const T &data) {
+bool probe_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -42,7 +42,7 @@ bool probe_test(const T &data) {
 
 
 template<typename T>
-bool probe_iter_test(const T &data) {
+bool probe_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -66,7 +66,7 @@ bool probe_iter_test(const T &data) {
 
 
 template<typename T>
-bool iprobe_test(const T &data) {
+bool iprobe_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -97,7 +97,7 @@ bool iprobe_test(const T &data) {
 
 
 template<typename T>
-bool iprobe_iter_test(const T &data) {
+bool iprobe_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;

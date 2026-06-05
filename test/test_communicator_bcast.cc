@@ -5,7 +5,7 @@
 
 
 template<typename T>
-bool bcast_test(const T &val) {
+bool bcast_test(const T& val) {
   const auto comm_world = mplr::comm_world();
   T x{};
   if (comm_world.rank() == 0)
@@ -16,8 +16,8 @@ bool bcast_test(const T &val) {
 
 
 template<typename T>
-bool bcast_test(const std::vector<T> &send, const std::vector<T> &expected,
-                const mplr::layout<T> &l) {
+bool bcast_test(const std::vector<T>& send, const std::vector<T>& expected,
+                const mplr::layout<T>& l) {
   const auto comm_world = mplr::comm_world();
   std::vector<T> x(send.size(), {});
   if (comm_world.rank() == 0)
@@ -31,7 +31,7 @@ bool bcast_test(const std::vector<T> &send, const std::vector<T> &expected,
 
 
 template<typename T>
-bool ibcast_test(const T &val) {
+bool ibcast_test(const T& val) {
   const auto comm_world = mplr::comm_world();
   T x{};
   if (comm_world.rank() == 0)
@@ -43,8 +43,8 @@ bool ibcast_test(const T &val) {
 
 
 template<typename T>
-bool ibcast_test(const std::vector<T> &send, const std::vector<T> &expected,
-                 const mplr::layout<T> &l) {
+bool ibcast_test(const std::vector<T>& send, const std::vector<T>& expected,
+                 const mplr::layout<T>& l) {
   const auto comm_world = mplr::comm_world();
   std::vector<T> x(send.size(), {});
   if (comm_world.rank() == 0)

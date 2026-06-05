@@ -6,7 +6,7 @@
 
 
 template<typename T>
-bool alltoall_test(const T &val) {
+bool alltoall_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T send_val{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -25,7 +25,7 @@ bool alltoall_test(const T &val) {
 
 
 template<typename T>
-bool alltoall_layout_test(const T &val) {
+bool alltoall_layout_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T send_val{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -47,7 +47,7 @@ bool alltoall_layout_test(const T &val) {
 
 
 template<typename T>
-bool alltoall_inplace_test(const T &val) {
+bool alltoall_inplace_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T send_val{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -65,7 +65,7 @@ bool alltoall_inplace_test(const T &val) {
 
 
 template<typename T>
-bool ialltoall_test(const T &val) {
+bool ialltoall_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T send_val{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -85,7 +85,7 @@ bool ialltoall_test(const T &val) {
 
 
 template<typename T>
-bool ialltoall_layout_test(const T &val) {
+bool ialltoall_layout_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T send_val{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -108,7 +108,7 @@ bool ialltoall_layout_test(const T &val) {
 
 
 template<typename T>
-bool ialltoall_inplace_test(const T &val) {
+bool ialltoall_inplace_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T send_val{val};
   for (int i{0}; i < comm_world.rank(); ++i)

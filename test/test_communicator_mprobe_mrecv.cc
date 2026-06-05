@@ -14,7 +14,7 @@
 
 
 template<typename T>
-bool mprobe_test(const T &data) {
+bool mprobe_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -40,7 +40,7 @@ bool mprobe_test(const T &data) {
 
 
 template<typename T>
-bool mprobe_iter_test(const T &data) {
+bool mprobe_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -64,7 +64,7 @@ bool mprobe_iter_test(const T &data) {
 
 
 template<typename T>
-bool improbe_test(const T &data) {
+bool improbe_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -96,7 +96,7 @@ bool improbe_test(const T &data) {
 
 
 template<typename T>
-bool improbe_iter_test(const T &data) {
+bool improbe_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;

@@ -20,8 +20,8 @@ enum class copy : int { left, right };
 
 
 // update grid points
-void string(const std::vector<double> &u, const std::vector<double> &u_old,
-            std::vector<double> &u_new, double eps) {
+void string(const std::vector<double>& u, const std::vector<double>& u_old,
+            std::vector<double>& u_new, double eps) {
   using size_type = std::vector<double>::size_type;
   const size_type N{u.size()};
   u_new[0] = u[0];

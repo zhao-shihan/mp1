@@ -10,8 +10,8 @@ using double_2 = std::tuple<double, double>;
 
 
 template<std::size_t dim, typename T, typename A>
-mplr::irequest_pool update_overlap(const mplr::cartesian_communicator &communicator,
-                                   mplr::distributed_grid<dim, T, A> &distributed_grid,
+mplr::irequest_pool update_overlap(const mplr::cartesian_communicator& communicator,
+                                   mplr::distributed_grid<dim, T, A>& distributed_grid,
                                    mplr::tag_t tag = mplr::tag_t()) {
   mplr::shift_ranks ranks;
   mplr::irequest_pool r;
@@ -34,33 +34,33 @@ mplr::irequest_pool update_overlap(const mplr::cartesian_communicator &communica
 
 
 template<std::size_t dim, typename T, typename A>
-void scatter(const mplr::cartesian_communicator &communicator, int root,
-             const mplr::local_grid<dim, T, A> &local_grid,
-             mplr::distributed_grid<dim, T, A> &distributed_grid) {
+void scatter(const mplr::cartesian_communicator& communicator, int root,
+             const mplr::local_grid<dim, T, A>& local_grid,
+             mplr::distributed_grid<dim, T, A>& distributed_grid) {
   communicator.scatterv(root, local_grid.data(), local_grid.sub_layouts(),
                         distributed_grid.data(), distributed_grid.interior_layout());
 }
 
 
 template<std::size_t dim, typename T, typename A>
-void scatter(const mplr::cartesian_communicator &communicator, int root,
-             mplr::distributed_grid<dim, T, A> &distributed_grid) {
+void scatter(const mplr::cartesian_communicator& communicator, int root,
+             mplr::distributed_grid<dim, T, A>& distributed_grid) {
   communicator.scatterv(root, distributed_grid.data(), distributed_grid.interior_layout());
 }
 
 
 template<std::size_t dim, typename T, typename A>
-void gather(const mplr::cartesian_communicator &communicator, int root,
-            const mplr::distributed_grid<dim, T, A> &distributed_grid,
-            mplr::local_grid<dim, T, A> &local_grid) {
+void gather(const mplr::cartesian_communicator& communicator, int root,
+            const mplr::distributed_grid<dim, T, A>& distributed_grid,
+            mplr::local_grid<dim, T, A>& local_grid) {
   communicator.gatherv(root, distributed_grid.data(), distributed_grid.interior_layout(),
                        local_grid.data(), local_grid.sub_layouts());
 }
 
 
 template<std::size_t dim, typename T, typename A>
-void gather(const mplr::cartesian_communicator &communicator, int root,
-            const mplr::distributed_grid<dim, T, A> &distributed_grid) {
+void gather(const mplr::cartesian_communicator& communicator, int root,
+            const mplr::distributed_grid<dim, T, A>& distributed_grid) {
   communicator.gatherv(root, distributed_grid.data(), distributed_grid.interior_layout());
 }
 

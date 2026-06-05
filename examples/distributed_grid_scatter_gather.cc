@@ -5,33 +5,33 @@
 
 
 template<std::size_t dim, typename T, typename A>
-void scatter(const mplr::cartesian_communicator &communicator, int root,
-             const mplr::local_grid<dim, T, A> &local_grid,
-             mplr::distributed_grid<dim, T, A> &distributed_grid) {
+void scatter(const mplr::cartesian_communicator& communicator, int root,
+             const mplr::local_grid<dim, T, A>& local_grid,
+             mplr::distributed_grid<dim, T, A>& distributed_grid) {
   communicator.scatterv(root, local_grid.data(), local_grid.sub_layouts(),
                         distributed_grid.data(), distributed_grid.interior_layout());
 }
 
 
 template<std::size_t dim, typename T, typename A>
-void scatter(const mplr::cartesian_communicator &communicator, int root,
-             mplr::distributed_grid<dim, T, A> &distributed_grid) {
+void scatter(const mplr::cartesian_communicator& communicator, int root,
+             mplr::distributed_grid<dim, T, A>& distributed_grid) {
   communicator.scatterv(root, distributed_grid.data(), distributed_grid.interior_layout());
 }
 
 
 template<std::size_t dim, typename T, typename A>
-void gather(const mplr::cartesian_communicator &communicator, int root,
-            const mplr::distributed_grid<dim, T, A> &distributed_grid,
-            mplr::local_grid<dim, T, A> &local_grid) {
+void gather(const mplr::cartesian_communicator& communicator, int root,
+            const mplr::distributed_grid<dim, T, A>& distributed_grid,
+            mplr::local_grid<dim, T, A>& local_grid) {
   communicator.gatherv(root, distributed_grid.data(), distributed_grid.interior_layout(),
                        local_grid.data(), local_grid.sub_layouts());
 }
 
 
 template<std::size_t dim, typename T, typename A>
-void gather(const mplr::cartesian_communicator &communicator, int root,
-            const mplr::distributed_grid<dim, T, A> &distributed_grid) {
+void gather(const mplr::cartesian_communicator& communicator, int root,
+            const mplr::distributed_grid<dim, T, A>& distributed_grid) {
   communicator.gatherv(root, distributed_grid.data(), distributed_grid.interior_layout());
 }
 

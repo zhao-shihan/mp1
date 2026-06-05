@@ -9,21 +9,21 @@
 
 
 template<typename T>
-bool allgather_test(const T &val) {
+bool allgather_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   std::vector<T> v(comm_world.size());
   comm_world.allgather(val, v.data());
-  return std::all_of(v.begin(), v.end(), [&val](const auto &x) { return x == val; });
+  return std::all_of(v.begin(), v.end(), [&val](const auto& x) { return x == val; });
 }
 
 
 template<typename T>
-bool iallgather_test(const T &val) {
+bool iallgather_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   std::vector<T> v(comm_world.size());
   auto r{comm_world.iallgather(val, v.data())};
   r.wait(mplr::duty_ratio{0.03});
-  return std::all_of(v.begin(), v.end(), [&val](const auto &x) { return x == val; });
+  return std::all_of(v.begin(), v.end(), [&val](const auto& x) { return x == val; });
 }
 
 

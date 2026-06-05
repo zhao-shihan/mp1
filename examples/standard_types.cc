@@ -10,15 +10,15 @@
 
 // print elements of a pair
 template<typename ch, typename tr, typename T1, typename T2>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::pair<T1, T2> &p) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::pair<T1, T2>& p) {
   return out << '(' << p.first << ',' << p.second << ')';
 }
 
 
 // helper function for printing all elements of a tuple/ an array
 template<typename ch, typename tr, typename tuple, std::size_t... IS>
-void print_tuple_impl(std::basic_ostream<ch, tr> &out, const tuple &t,
+void print_tuple_impl(std::basic_ostream<ch, tr>& out, const tuple& t,
                       std::index_sequence<IS...> is) {
   auto print_element = [&](auto i, auto a) -> void {
     out << a << (i + 1 < is.size() ? "," : "");
@@ -29,8 +29,8 @@ void print_tuple_impl(std::basic_ostream<ch, tr> &out, const tuple &t,
 
 // print all elements of a tuple
 template<typename ch, typename tr, typename... args>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::tuple<args...> &t) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::tuple<args...>& t) {
   out << '(';
   print_tuple_impl(out, t, std::index_sequence_for<args...>{});
   return out << ')';
@@ -39,8 +39,8 @@ std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
 
 // print all elements of an array
 template<typename ch, typename tr, typename ty, std::size_t s>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
-                                       const std::array<ty, s> &t) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out,
+                                       const std::array<ty, s>& t) {
   out << '(';
   print_tuple_impl(out, t, std::make_integer_sequence<std::size_t, s>{});
   return out << ')';
@@ -49,21 +49,21 @@ std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out,
 
 // print a byte
 template<typename ch, typename tr>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out, const std::byte &t) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out, const std::byte& t) {
   return out << std::to_integer<int>(t);
 }
 
 
 // send some item of a standard type
 template<typename T>
-void send(const mplr::communicator &comm, const T &x) {
+void send(const mplr::communicator& comm, const T& x) {
   comm.send(x, 1);
 }
 
 
 // receive some item of a standard type
 template<typename T>
-void recv(const mplr::communicator &comm) {
+void recv(const mplr::communicator& comm) {
   T x;
   comm.recv(x, 0);
   std::cout << "x = " << std::boolalpha << x << '\n';

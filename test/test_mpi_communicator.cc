@@ -39,7 +39,7 @@ struct span_size<std::span<T, N>> {
 
 
 template<typename T>
-bool send_recv_test(const T &data) {
+bool send_recv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;

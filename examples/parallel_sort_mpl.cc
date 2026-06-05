@@ -16,7 +16,7 @@ double get_random() {
 }
 
 
-void fill_random(std::vector<double> &v) {
+void fill_random(std::vector<double>& v) {
   std::generate(std::begin(v), std::end(v), get_random);
 }
 
@@ -36,7 +36,7 @@ void fill_random(std::vector<double> &v) {
 // In worst case, a single process may hold finally all data.
 //
 template<typename T>
-void parallel_sort(std::vector<T> &v) {
+void parallel_sort(std::vector<T>& v) {
   const auto comm_world{mplr::comm_world()};
   const int rank{comm_world.rank()};
   const int size{comm_world.size()};

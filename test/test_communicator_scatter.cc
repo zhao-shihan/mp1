@@ -5,7 +5,7 @@
 
 
 template<typename T>
-bool scatter_test(const T &val) {
+bool scatter_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T recv;
   if (comm_world.rank() == 0) {
@@ -19,8 +19,8 @@ bool scatter_test(const T &val) {
 
 
 template<typename T>
-bool scatter_test(const std::vector<T> &send, const std::vector<T> &expected,
-                  const mplr::layout<T> &l) {
+bool scatter_test(const std::vector<T>& send, const std::vector<T>& expected,
+                  const mplr::layout<T>& l) {
   const auto comm_world{mplr::comm_world()};
   std::vector<T> recv(send.size());
   if (comm_world.rank() == 0) {
@@ -36,7 +36,7 @@ bool scatter_test(const std::vector<T> &send, const std::vector<T> &expected,
 
 
 template<typename T>
-bool iscatter_test(const T &val) {
+bool iscatter_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   T recv;
   if (comm_world.rank() == 0) {
@@ -52,8 +52,8 @@ bool iscatter_test(const T &val) {
 
 
 template<typename T>
-bool iscatter_test(const std::vector<T> &send, const std::vector<T> &expected,
-                   const mplr::layout<T> &l) {
+bool iscatter_test(const std::vector<T>& send, const std::vector<T>& expected,
+                   const mplr::layout<T>& l) {
   const auto comm_world{mplr::comm_world()};
   std::vector<T> recv(send.size());
   if (comm_world.rank() == 0) {

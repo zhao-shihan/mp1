@@ -10,10 +10,10 @@ struct my_array {
   static constexpr int n_1{4};
   double data[n_0][n_1]{};
   // overload operators for some syntactical sugar
-  const double &operator()(int i_0, int i_1) const {
+  const double& operator()(int i_0, int i_1) const {
     return data[i_0][i_1];
   }
-  double &operator()(int i_0, int i_1) {
+  double& operator()(int i_0, int i_1) {
     return data[i_0][i_1];
   }
 };
@@ -24,7 +24,7 @@ MPLR_REFLECTION(my_array, data)
 
 
 // overload plus operator
-my_array operator+(const my_array &a, const my_array &b) {
+my_array operator+(const my_array& a, const my_array& b) {
   my_array res;
   for (int i_1{0}; i_1 < my_array::n_1; ++i_1)
     for (int i_0{0}; i_0 < my_array::n_0; ++i_0)
@@ -56,7 +56,7 @@ int main() {
     std::vector<double> v(comm_world.size());  // receive buffer
     comm_world.gather(root, x, v.data());
     std::cout << "v = ";
-    for (const auto &item : v)
+    for (const auto& item : v)
       std::cout << item << ' ';
     std::cout << '\n';
   } else

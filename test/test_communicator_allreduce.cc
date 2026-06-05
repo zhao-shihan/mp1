@@ -6,7 +6,7 @@
 
 
 template<typename F, typename T>
-bool allreduce_test(F f, const T &val) {
+bool allreduce_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -24,7 +24,7 @@ bool allreduce_test(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool allreduce_test_with_layout(F f, const T &val) {
+bool allreduce_test_with_layout(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -46,7 +46,7 @@ bool allreduce_test_with_layout(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool iallreduce_test(F f, const T &val) {
+bool iallreduce_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -65,7 +65,7 @@ bool iallreduce_test(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool iallreduce_test_with_layout(F f, const T &val) {
+bool iallreduce_test_with_layout(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -88,7 +88,7 @@ bool iallreduce_test_with_layout(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool allreduce_test_inplace(F f, const T &val) {
+bool allreduce_test_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -105,7 +105,7 @@ bool allreduce_test_inplace(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool allreduce_test_with_layout_inplace(F f, const T &val) {
+bool allreduce_test_with_layout_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -126,7 +126,7 @@ bool allreduce_test_with_layout_inplace(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool iallreduce_test_inplace(F f, const T &val) {
+bool iallreduce_test_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -144,7 +144,7 @@ bool iallreduce_test_inplace(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool iallreduce_test_with_layout_inplace(F f, const T &val) {
+bool iallreduce_test_with_layout_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)

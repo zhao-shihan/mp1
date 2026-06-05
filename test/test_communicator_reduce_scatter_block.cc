@@ -6,7 +6,7 @@
 
 
 template<typename F, typename T>
-bool reduce_scatter_block_test(F f, const T &val) {
+bool reduce_scatter_block_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   std::vector<T> v_x;
@@ -27,7 +27,7 @@ bool reduce_scatter_block_test(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool reduce_scatter_block_test_with_layout(F f, const T &val) {
+bool reduce_scatter_block_test_with_layout(F f, const T& val) {
   const int block_size{3};
   const auto comm_world{mplr::comm_world()};
   T x{val};
@@ -52,7 +52,7 @@ bool reduce_scatter_block_test_with_layout(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool ireduce_scatter_block_test(F f, const T &val) {
+bool ireduce_scatter_block_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   std::vector<T> v_x;
@@ -74,7 +74,7 @@ bool ireduce_scatter_block_test(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool ireduce_scatter_block_test_with_layout(F f, const T &val) {
+bool ireduce_scatter_block_test_with_layout(F f, const T& val) {
   const int block_size{3};
   const auto comm_world{mplr::comm_world()};
   T x{val};

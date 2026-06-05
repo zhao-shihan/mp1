@@ -9,7 +9,7 @@
 
 
 template<typename T>
-bool allgatherv_test(const T &val) {
+bool allgatherv_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v1(N);
@@ -26,7 +26,7 @@ bool allgatherv_test(const T &val) {
 
 
 template<typename T>
-bool allgatherv_contiguous_test(const T &val) {
+bool allgatherv_contiguous_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v1(N);
@@ -46,7 +46,7 @@ bool allgatherv_contiguous_test(const T &val) {
 
 
 template<typename T>
-bool iallgatherv_test(const T &val) {
+bool iallgatherv_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v1(N);
@@ -64,7 +64,7 @@ bool iallgatherv_test(const T &val) {
 
 
 template<typename T>
-bool iallgatherv_contiguous_test(const T &val) {
+bool iallgatherv_contiguous_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v1(N);

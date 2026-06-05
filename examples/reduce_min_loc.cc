@@ -43,7 +43,7 @@ int main() {
     }
     // display results of global reduction
     std::cout << "\nresults:\n";
-    for (const pair_t &i : result)
+    for (const pair_t& i : result)
       std::cout << std::fixed << std::setprecision(5) << i.first << ' ' << i.second << '\t';
     std::cout << '\n';
   } else {

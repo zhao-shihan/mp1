@@ -11,7 +11,7 @@
 
 
 template<typename T>
-bool sendrecv_test(const T &data) {
+bool sendrecv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   const int rank{comm_world.rank()};
   const int size{comm_world.size()};
@@ -23,7 +23,7 @@ bool sendrecv_test(const T &data) {
 
 
 template<typename T>
-bool sendrecv_iter_test(const T &data) {
+bool sendrecv_iter_test(const T& data) {
   static_assert(has_size<T>());
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)

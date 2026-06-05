@@ -8,7 +8,7 @@
 
 
 template<use_non_root_overload variant, typename T>
-bool scatterv_test(const T &val) {
+bool scatterv_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v_scatter(N);
@@ -39,7 +39,7 @@ bool scatterv_test(const T &val) {
 
 
 template<use_non_root_overload variant, typename T>
-bool scatterv_contiguous_test(const T &val) {
+bool scatterv_contiguous_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v_scatter(N);
@@ -72,7 +72,7 @@ bool scatterv_contiguous_test(const T &val) {
 
 
 template<use_non_root_overload variant, typename T>
-bool iscatterv_test(const T &val) {
+bool iscatterv_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v_scatter(N);
@@ -107,7 +107,7 @@ bool iscatterv_test(const T &val) {
 
 
 template<use_non_root_overload variant, typename T>
-bool iscatterv_contiguous_test(const T &val) {
+bool iscatterv_contiguous_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   const int N{(comm_world.size() * comm_world.size() + comm_world.size()) / 2};
   std::vector<T> v_scatter(N);

@@ -5,7 +5,7 @@
 
 
 template<typename T>
-bool read_at_write_at_test(const T &val) {
+bool read_at_write_at_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -18,7 +18,7 @@ bool read_at_write_at_test(const T &val) {
     file.set_view<T>("native");
     file.write_at(comm_world.rank(), val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -30,7 +30,7 @@ bool read_at_write_at_test(const T &val) {
     file.set_view<T>("native");
     file.read_at(comm_world.rank(), val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -40,7 +40,7 @@ bool read_at_write_at_test(const T &val) {
 
 
 template<typename T>
-bool read_at_write_at_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool read_at_write_at_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -53,7 +53,7 @@ bool read_at_write_at_test(const std::vector<T> &val, const mplr::layout<T> &lay
     file.set_view<T>("native");
     file.write_at(comm_world.rank() * layout.extent(), val.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -65,7 +65,7 @@ bool read_at_write_at_test(const std::vector<T> &val, const mplr::layout<T> &lay
     file.set_view<T>("native");
     file.read_at(comm_world.rank() * layout.extent(), val2.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -75,7 +75,7 @@ bool read_at_write_at_test(const std::vector<T> &val, const mplr::layout<T> &lay
 
 
 template<typename T>
-bool iread_at_iwrite_at_test(const T &val) {
+bool iread_at_iwrite_at_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -89,7 +89,7 @@ bool iread_at_iwrite_at_test(const T &val) {
     auto r{file.iwrite_at(comm_world.rank(), val)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -102,7 +102,7 @@ bool iread_at_iwrite_at_test(const T &val) {
     auto r{file.iread_at(comm_world.rank(), val2)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -112,7 +112,7 @@ bool iread_at_iwrite_at_test(const T &val) {
 
 
 template<typename T>
-bool iread_at_iwrite_at_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool iread_at_iwrite_at_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -126,7 +126,7 @@ bool iread_at_iwrite_at_test(const std::vector<T> &val, const mplr::layout<T> &l
     auto r{file.iwrite_at(comm_world.rank() * layout.extent(), val.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -139,7 +139,7 @@ bool iread_at_iwrite_at_test(const std::vector<T> &val, const mplr::layout<T> &l
     auto r{file.iread_at(comm_world.rank() * layout.extent(), val2.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -149,7 +149,7 @@ bool iread_at_iwrite_at_test(const std::vector<T> &val, const mplr::layout<T> &l
 
 
 template<typename T>
-bool read_write_test(const T &val) {
+bool read_write_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -163,7 +163,7 @@ bool read_write_test(const T &val) {
     file.set_view("native", l);
     file.write(val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -176,7 +176,7 @@ bool read_write_test(const T &val) {
     file.set_view("native", l);
     file.read(val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -186,7 +186,7 @@ bool read_write_test(const T &val) {
 
 
 template<typename T>
-bool read_write_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool read_write_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -200,7 +200,7 @@ bool read_write_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
     file.set_view("native", l);
     file.write(val.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -213,7 +213,7 @@ bool read_write_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
     file.set_view("native", l);
     file.read(val2.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -223,7 +223,7 @@ bool read_write_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
 
 
 template<typename T>
-bool iread_iwrite_test(const T &val) {
+bool iread_iwrite_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -238,7 +238,7 @@ bool iread_iwrite_test(const T &val) {
     auto r{file.iwrite(val)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -252,7 +252,7 @@ bool iread_iwrite_test(const T &val) {
     auto r{file.iread(val2)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -262,7 +262,7 @@ bool iread_iwrite_test(const T &val) {
 
 
 template<typename T>
-bool iread_iwrite_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool iread_iwrite_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -277,7 +277,7 @@ bool iread_iwrite_test(const std::vector<T> &val, const mplr::layout<T> &layout)
     auto r{file.iwrite(val.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -291,7 +291,7 @@ bool iread_iwrite_test(const std::vector<T> &val, const mplr::layout<T> &layout)
     auto r{file.iread(val2.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -301,7 +301,7 @@ bool iread_iwrite_test(const std::vector<T> &val, const mplr::layout<T> &layout)
 
 
 template<typename T>
-bool read_shared_write_shared_test(const T &val) {
+bool read_shared_write_shared_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -314,7 +314,7 @@ bool read_shared_write_shared_test(const T &val) {
     file.set_view<T>("native");
     file.write_shared(val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -326,7 +326,7 @@ bool read_shared_write_shared_test(const T &val) {
     file.set_view<T>("native");
     file.read_shared(val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -336,7 +336,7 @@ bool read_shared_write_shared_test(const T &val) {
 
 
 template<typename T>
-bool read_shared_write_shared_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool read_shared_write_shared_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -349,7 +349,7 @@ bool read_shared_write_shared_test(const std::vector<T> &val, const mplr::layout
     file.set_view<T>("native");
     file.write_shared(val.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -361,7 +361,7 @@ bool read_shared_write_shared_test(const std::vector<T> &val, const mplr::layout
     file.set_view<T>("native");
     file.read_shared(val2.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -371,7 +371,7 @@ bool read_shared_write_shared_test(const std::vector<T> &val, const mplr::layout
 
 
 template<typename T>
-bool iread_shared_iwrite_shared_test(const T &val) {
+bool iread_shared_iwrite_shared_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -385,7 +385,7 @@ bool iread_shared_iwrite_shared_test(const T &val) {
     auto r{file.iwrite_shared(val)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -398,7 +398,7 @@ bool iread_shared_iwrite_shared_test(const T &val) {
     auto r{file.iread_shared(val2)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -408,7 +408,7 @@ bool iread_shared_iwrite_shared_test(const T &val) {
 
 
 template<typename T>
-bool iread_shared_iwrite_shared_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool iread_shared_iwrite_shared_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -422,7 +422,7 @@ bool iread_shared_iwrite_shared_test(const std::vector<T> &val, const mplr::layo
     auto r{file.iwrite_shared(val.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -435,7 +435,7 @@ bool iread_shared_iwrite_shared_test(const std::vector<T> &val, const mplr::layo
     auto r{file.iread_shared(val2.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -445,7 +445,7 @@ bool iread_shared_iwrite_shared_test(const std::vector<T> &val, const mplr::layo
 
 
 template<typename T>
-bool read_at_all_write_at_all_test(const T &val) {
+bool read_at_all_write_at_all_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -458,7 +458,7 @@ bool read_at_all_write_at_all_test(const T &val) {
     file.set_view<T>("native");
     file.write_at_all(comm_world.rank(), val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -470,7 +470,7 @@ bool read_at_all_write_at_all_test(const T &val) {
     file.set_view<T>("native");
     file.read_at_all(comm_world.rank(), val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -480,7 +480,7 @@ bool read_at_all_write_at_all_test(const T &val) {
 
 
 template<typename T>
-bool read_at_all_write_at_all_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool read_at_all_write_at_all_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -493,7 +493,7 @@ bool read_at_all_write_at_all_test(const std::vector<T> &val, const mplr::layout
     file.set_view<T>("native");
     file.write_at_all(comm_world.rank() * layout.extent(), val.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -505,7 +505,7 @@ bool read_at_all_write_at_all_test(const std::vector<T> &val, const mplr::layout
     file.set_view<T>("native");
     file.read_at_all(comm_world.rank() * layout.extent(), val2.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -515,7 +515,7 @@ bool read_at_all_write_at_all_test(const std::vector<T> &val, const mplr::layout
 
 
 template<typename T>
-bool iread_at_all_iwrite_at_all_test(const T &val) {
+bool iread_at_all_iwrite_at_all_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -529,7 +529,7 @@ bool iread_at_all_iwrite_at_all_test(const T &val) {
     auto r{file.iwrite_at_all(comm_world.rank(), val)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -542,7 +542,7 @@ bool iread_at_all_iwrite_at_all_test(const T &val) {
     auto r{file.iread_at_all(comm_world.rank(), val2)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -552,7 +552,7 @@ bool iread_at_all_iwrite_at_all_test(const T &val) {
 
 
 template<typename T>
-bool iread_at_all_iwrite_at_all_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool iread_at_all_iwrite_at_all_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -566,7 +566,7 @@ bool iread_at_all_iwrite_at_all_test(const std::vector<T> &val, const mplr::layo
     auto r{file.iwrite_at_all(comm_world.rank() * layout.extent(), val.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -579,7 +579,7 @@ bool iread_at_all_iwrite_at_all_test(const std::vector<T> &val, const mplr::layo
     auto r{file.iread_at_all(comm_world.rank() * layout.extent(), val2.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -589,7 +589,7 @@ bool iread_at_all_iwrite_at_all_test(const std::vector<T> &val, const mplr::layo
 
 
 template<typename T>
-bool read_all_write_all_test(const T &val) {
+bool read_all_write_all_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -603,7 +603,7 @@ bool read_all_write_all_test(const T &val) {
     file.set_view("native", l);
     file.write_all(val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -616,7 +616,7 @@ bool read_all_write_all_test(const T &val) {
     file.set_view("native", l);
     file.read_all(val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -626,7 +626,7 @@ bool read_all_write_all_test(const T &val) {
 
 
 template<typename T>
-bool read_all_write_all_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool read_all_write_all_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -640,7 +640,7 @@ bool read_all_write_all_test(const std::vector<T> &val, const mplr::layout<T> &l
     file.set_view("native", l);
     file.write_all(val.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -653,7 +653,7 @@ bool read_all_write_all_test(const std::vector<T> &val, const mplr::layout<T> &l
     file.set_view("native", l);
     file.read_all(val2.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -663,7 +663,7 @@ bool read_all_write_all_test(const std::vector<T> &val, const mplr::layout<T> &l
 
 
 template<typename T>
-bool iread_all_iwrite_all_test(const T &val) {
+bool iread_all_iwrite_all_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -678,7 +678,7 @@ bool iread_all_iwrite_all_test(const T &val) {
     auto r{file.iwrite_all(val)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -692,7 +692,7 @@ bool iread_all_iwrite_all_test(const T &val) {
     auto r{file.iread_all(val2)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -702,7 +702,7 @@ bool iread_all_iwrite_all_test(const T &val) {
 
 
 template<typename T>
-bool iread_all_iwrite_all_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool iread_all_iwrite_all_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -717,7 +717,7 @@ bool iread_all_iwrite_all_test(const std::vector<T> &val, const mplr::layout<T> 
     auto r{file.iwrite_all(val.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -731,7 +731,7 @@ bool iread_all_iwrite_all_test(const std::vector<T> &val, const mplr::layout<T> 
     auto r{file.iread_all(val2.data(), layout)};
     r.wait();
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -741,7 +741,7 @@ bool iread_all_iwrite_all_test(const std::vector<T> &val, const mplr::layout<T> 
 
 
 template<typename T>
-bool read_ordered_write_ordered_test(const T &val) {
+bool read_ordered_write_ordered_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -754,7 +754,7 @@ bool read_ordered_write_ordered_test(const T &val) {
     file.set_view<T>("native");
     file.write_ordered(val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -766,7 +766,7 @@ bool read_ordered_write_ordered_test(const T &val) {
     file.set_view<T>("native");
     file.read_ordered(val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -776,7 +776,7 @@ bool read_ordered_write_ordered_test(const T &val) {
 
 
 template<typename T>
-bool read_ordered_write_ordered_test(const std::vector<T> &val, const mplr::layout<T> &layout) {
+bool read_ordered_write_ordered_test(const std::vector<T>& val, const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -789,7 +789,7 @@ bool read_ordered_write_ordered_test(const std::vector<T> &val, const mplr::layo
     file.set_view<T>("native");
     file.write_ordered(val.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -801,7 +801,7 @@ bool read_ordered_write_ordered_test(const std::vector<T> &val, const mplr::layo
     file.set_view<T>("native");
     file.read_ordered(val2.data(), layout);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -811,7 +811,7 @@ bool read_ordered_write_ordered_test(const std::vector<T> &val, const mplr::layo
 
 
 template<typename T>
-bool read_at_all_split_write_at_all_split_test(const T &val) {
+bool read_at_all_split_write_at_all_split_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -825,7 +825,7 @@ bool read_at_all_split_write_at_all_split_test(const T &val) {
     file.write_at_all_begin(comm_world.rank(), val);
     file.write_at_all_end(val);
     // file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -838,7 +838,7 @@ bool read_at_all_split_write_at_all_split_test(const T &val) {
     file.read_at_all_begin(comm_world.rank(), val2);
     file.read_at_all_end(val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -848,8 +848,8 @@ bool read_at_all_split_write_at_all_split_test(const T &val) {
 
 
 template<typename T>
-bool read_at_all_split_write_at_all_split_test(const std::vector<T> &val,
-                                               const mplr::layout<T> &layout) {
+bool read_at_all_split_write_at_all_split_test(const std::vector<T>& val,
+                                               const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -863,7 +863,7 @@ bool read_at_all_split_write_at_all_split_test(const std::vector<T> &val,
     file.write_at_all_begin(comm_world.rank() * layout.extent(), val.data(), layout);
     file.write_at_all_end(val.data());
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -876,7 +876,7 @@ bool read_at_all_split_write_at_all_split_test(const std::vector<T> &val,
     file.read_at_all_begin(comm_world.rank() * layout.extent(), val2.data(), layout);
     file.read_at_all_end(val2.data());
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -886,7 +886,7 @@ bool read_at_all_split_write_at_all_split_test(const std::vector<T> &val,
 
 
 template<typename T>
-bool read_all_split_write_all_split_test(const T &val) {
+bool read_all_split_write_all_split_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -901,7 +901,7 @@ bool read_all_split_write_all_split_test(const T &val) {
     file.write_all_begin(val);
     file.write_all_end(val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -915,7 +915,7 @@ bool read_all_split_write_all_split_test(const T &val) {
     file.read_all_begin(val2);
     file.read_all_end(val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -925,8 +925,8 @@ bool read_all_split_write_all_split_test(const T &val) {
 
 
 template<typename T>
-bool read_all_split_write_all_split_test(const std::vector<T> &val,
-                                         const mplr::layout<T> &layout) {
+bool read_all_split_write_all_split_test(const std::vector<T>& val,
+                                         const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -941,7 +941,7 @@ bool read_all_split_write_all_split_test(const std::vector<T> &val,
     file.write_all_begin(val.data(), layout);
     file.write_all_end(val.data());
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -955,7 +955,7 @@ bool read_all_split_write_all_split_test(const std::vector<T> &val,
     file.read_all_begin(val2.data(), layout);
     file.read_all_end(val2.data());
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -965,7 +965,7 @@ bool read_all_split_write_all_split_test(const std::vector<T> &val,
 
 
 template<typename T>
-bool read_ordered_split_write_ordered_split_test(const T &val) {
+bool read_ordered_split_write_ordered_split_test(const T& val) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -979,7 +979,7 @@ bool read_ordered_split_write_ordered_split_test(const T &val) {
     file.write_ordered_begin(val);
     file.write_ordered_end(val);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -992,7 +992,7 @@ bool read_ordered_split_write_ordered_split_test(const T &val) {
     file.read_ordered_begin(val2);
     file.read_ordered_end(val2);
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -1002,8 +1002,8 @@ bool read_ordered_split_write_ordered_split_test(const T &val) {
 
 
 template<typename T>
-bool read_ordered_split_write_ordered_split_test(const std::vector<T> &val,
-                                                 const mplr::layout<T> &layout) {
+bool read_ordered_split_write_ordered_split_test(const std::vector<T>& val,
+                                                 const mplr::layout<T>& layout) {
   auto filename{"test.bin"};
   const auto comm_world{mplr::comm_world()};
   if (comm_world.rank() == 0)
@@ -1017,7 +1017,7 @@ bool read_ordered_split_write_ordered_split_test(const std::vector<T> &val,
     file.write_ordered_begin(val.data(), layout);
     file.write_ordered_end(val.data());
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }
@@ -1030,7 +1030,7 @@ bool read_ordered_split_write_ordered_split_test(const std::vector<T> &val,
     file.read_ordered_begin(val2.data(), layout);
     file.read_ordered_end(val2.data());
     file.close();
-  } catch (mplr::error &error) {
+  } catch (mplr::error& error) {
     std::cerr << error.what() << '\n';
     return false;
   }

@@ -33,7 +33,7 @@ bool isend_irecv_test() {
 
 
 template<typename T>
-bool isend_irecv_test(const T &data) {
+bool isend_irecv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -53,7 +53,7 @@ bool isend_irecv_test(const T &data) {
 
 
 template<typename T>
-bool isend_irecv_iter_test(const T &data) {
+bool isend_irecv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -100,7 +100,7 @@ bool ibsend_irecv_test() {
 
 
 template<typename T>
-bool ibsend_irecv_test(const T &data) {
+bool ibsend_irecv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -126,7 +126,7 @@ bool ibsend_irecv_test(const T &data) {
 
 
 template<typename T>
-bool ibsend_irecv_iter_test(const T &data) {
+bool ibsend_irecv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -178,7 +178,7 @@ bool issend_irecv_test() {
 
 
 template<typename T>
-bool issend_irecv_test(const T &data) {
+bool issend_irecv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -198,7 +198,7 @@ bool issend_irecv_test(const T &data) {
 
 
 template<typename T>
-bool issend_irecv_iter_test(const T &data) {
+bool issend_irecv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -246,7 +246,7 @@ bool irsend_irecv_test() {
 
 
 template<typename T>
-bool irsend_irecv_test(const T &data) {
+bool irsend_irecv_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -291,7 +291,7 @@ bool irsend_irecv_test(const T &data) {
 
 
 template<typename T>
-bool irsend_irecv_iter_test(const T &data) {
+bool irsend_irecv_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;

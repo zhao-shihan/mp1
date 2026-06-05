@@ -146,7 +146,7 @@ int main() {
     } else {
       for (int i{0}; i < p; ++i)
         recvl.push_back(mplr::empty_layout<int>());
-      comm_world.alltoallv(m_l.data(), sendl, reinterpret_cast<int *>(0), recvl);
+      comm_world.alltoallv(m_l.data(), sendl, reinterpret_cast<int*>(0), recvl);
     }
   }
 

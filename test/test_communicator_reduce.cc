@@ -6,7 +6,7 @@
 
 
 template<typename F, typename T>
-bool reduce_test(F f, const T &val) {
+bool reduce_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -28,7 +28,7 @@ bool reduce_test(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool reduce_test_with_layout(F f, const T &val) {
+bool reduce_test_with_layout(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -54,7 +54,7 @@ bool reduce_test_with_layout(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool ireduce_test(F f, const T &val) {
+bool ireduce_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -78,7 +78,7 @@ bool ireduce_test(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool ireduce_test_with_layout(F f, const T &val) {
+bool ireduce_test_with_layout(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -106,7 +106,7 @@ bool ireduce_test_with_layout(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool reduce_test_inplace(F f, const T &val) {
+bool reduce_test_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -128,7 +128,7 @@ bool reduce_test_inplace(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool reduce_test_with_layout_inplace(F f, const T &val) {
+bool reduce_test_with_layout_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -146,7 +146,7 @@ bool reduce_test_with_layout_inplace(F f, const T &val) {
     std::vector<T> v_expected(n, expected);
     return v_x == v_expected;
   } else {
-    const std::vector<T> &const_v_x{v_x};
+    const std::vector<T>& const_v_x{v_x};
     comm_world.reduce(f, 0, const_v_x.data(), l);
     return true;
   }
@@ -154,7 +154,7 @@ bool reduce_test_with_layout_inplace(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool ireduce_test_inplace(F f, const T &val) {
+bool ireduce_test_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -178,7 +178,7 @@ bool ireduce_test_inplace(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool ireduce_test_with_layout_inplace(F f, const T &val) {
+bool ireduce_test_with_layout_inplace(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   for (int i{0}; i < comm_world.rank(); ++i)
@@ -197,7 +197,7 @@ bool ireduce_test_with_layout_inplace(F f, const T &val) {
     std::vector<T> v_expected(n, expected);
     return v_x == v_expected;
   } else {
-    const std::vector<T> &const_v_x{v_x};
+    const std::vector<T>& const_v_x{v_x};
     auto r{comm_world.ireduce(f, 0, const_v_x.data(), l)};
     r.wait();
     return true;

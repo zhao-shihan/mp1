@@ -13,7 +13,7 @@ enum { left_copy, right_copy };
 
 
 // update string elongation
-void string(const double *u, const double *u_old, double *u_new, int N, double eps) {
+void string(const double* u, const double* u_old, double* u_new, int N, double eps) {
   u_new[0] = u[0];
   for (int i = 1; i < N - 1; ++i)
     u_new[i] = eps * (u[i - 1] + u[i + 1]) + 2.0 * (1.0 - eps) * u[i] - u_old[i];
@@ -21,8 +21,8 @@ void string(const double *u, const double *u_old, double *u_new, int N, double e
 }
 
 
-void *secure_malloc(size_t size) {
-  void *p = malloc(size);
+void* secure_malloc(size_t size) {
+  void* p = malloc(size);
   if (p == NULL)
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
   return p;
@@ -43,7 +43,7 @@ static inline double u_0_dt(double x) {
 }
 
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   int C_rank, C_size, *N_l, *N0_l;
   double dx = L / (N - 1), eps = dt * dt * c * c / (dx * dx), *u = NULL, *u_l, *u_old_l,
          *u_new_l, *u_temp;

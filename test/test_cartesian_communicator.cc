@@ -82,7 +82,7 @@ bool cartesian_communicator_test() {
 
 
 template<typename T>
-bool cartesian_communicator_neighbor_alltoall_test(const T &val) {
+bool cartesian_communicator_neighbor_alltoall_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   mplr::cartesian_communicator::dimensions dimensions{mplr::cartesian_communicator::periodic};
   mplr::cartesian_communicator comm_c{comm_world,
@@ -107,7 +107,7 @@ bool cartesian_communicator_neighbor_alltoall_test(const T &val) {
 
 
 template<typename T>
-bool cartesian_communicator_neighbor_alltoall_layout_test(const T &val) {
+bool cartesian_communicator_neighbor_alltoall_layout_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   mplr::cartesian_communicator::dimensions dimensions{mplr::cartesian_communicator::periodic};
   mplr::cartesian_communicator comm_c{comm_world,
@@ -136,7 +136,7 @@ bool cartesian_communicator_neighbor_alltoall_layout_test(const T &val) {
 
 
 template<typename T>
-bool cartesian_communicator_ineighbor_alltoall_test(const T &val) {
+bool cartesian_communicator_ineighbor_alltoall_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   mplr::cartesian_communicator::dimensions dimensions{mplr::cartesian_communicator::periodic};
   mplr::cartesian_communicator comm_c{comm_world,
@@ -162,7 +162,7 @@ bool cartesian_communicator_ineighbor_alltoall_test(const T &val) {
 
 
 template<typename T>
-bool cartesian_communicator_ineighbor_alltoall_layout_test(const T &val) {
+bool cartesian_communicator_ineighbor_alltoall_layout_test(const T& val) {
   const auto comm_world{mplr::comm_world()};
   mplr::cartesian_communicator::dimensions dimensions{mplr::cartesian_communicator::periodic};
   mplr::cartesian_communicator comm_c{comm_world,

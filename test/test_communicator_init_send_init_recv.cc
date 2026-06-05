@@ -36,7 +36,7 @@ bool send_init_recv_init_test() {
 
 
 template<typename T>
-bool send_init_recv_init_test(const T &data) {
+bool send_init_recv_init_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -66,7 +66,7 @@ bool send_init_recv_init_test(const T &data) {
 
 
 template<typename T>
-bool send_init_recv_init_iter_test(const T &data) {
+bool send_init_recv_init_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -139,7 +139,7 @@ bool bsend_init_recv_init_test() {
 
 
 template<typename T>
-bool bsend_init_recv_init_test(const T &data) {
+bool bsend_init_recv_init_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -175,7 +175,7 @@ bool bsend_init_recv_init_test(const T &data) {
 
 
 template<typename T>
-bool bsend_init_recv_init_iter_test(const T &data) {
+bool bsend_init_recv_init_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -253,7 +253,7 @@ bool ssend_init_recv_init_test() {
 
 
 template<typename T>
-bool ssend_init_recv_init_test(const T &data) {
+bool ssend_init_recv_init_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -283,7 +283,7 @@ bool ssend_init_recv_init_test(const T &data) {
 
 
 template<typename T>
-bool ssend_init_recv_init_iter_test(const T &data) {
+bool ssend_init_recv_init_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -361,7 +361,7 @@ bool rsend_init_recv_init_test() {
 
 
 template<typename T>
-bool rsend_init_recv_init_test(const T &data) {
+bool rsend_init_recv_init_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;
@@ -397,7 +397,7 @@ bool rsend_init_recv_init_test(const T &data) {
 
 
 template<typename T>
-bool rsend_init_recv_init_iter_test(const T &data) {
+bool rsend_init_recv_init_iter_test(const T& data) {
   const auto comm_world = mplr::comm_world();
   if (comm_world.size() < 2)
     return false;

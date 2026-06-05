@@ -6,7 +6,7 @@
 
 
 template<typename F, typename T>
-bool reduce_scatter_test(F f, const T &val) {
+bool reduce_scatter_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   std::vector<T> v_x;
@@ -33,7 +33,7 @@ bool reduce_scatter_test(F f, const T &val) {
 
 
 template<typename F, typename T>
-bool ireduce_scatter_test(F f, const T &val) {
+bool ireduce_scatter_test(F f, const T& val) {
   const auto comm_world{mplr::comm_world()};
   T x{val};
   std::vector<T> v_x;

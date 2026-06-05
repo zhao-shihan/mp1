@@ -29,7 +29,7 @@ int main() {
          << "inter communicator rank: " << icom.rank() << ";\t"
          << "inter communicator remote size: " << icom.remote_size() << ";\t"
          << "gathered data: ";
-  for (auto &val : recv_data)
+  for (auto& val : recv_data)
     stream << val << ' ';
   stream << '\n';
   std::cout << stream.str();

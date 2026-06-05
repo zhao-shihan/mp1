@@ -5,8 +5,8 @@
 
 
 template<std::size_t dim, typename T, typename A>
-void update_overlap(const mplr::cartesian_communicator &cartesian_communicator,
-                    mplr::distributed_grid<dim, T, A> &grid, mplr::tag_t tag = mplr::tag_t()) {
+void update_overlap(const mplr::cartesian_communicator& cartesian_communicator,
+                    mplr::distributed_grid<dim, T, A>& grid, mplr::tag_t tag = mplr::tag_t()) {
   for (std::size_t i{0}; i < dim; ++i) {
     // send to left
     auto [source_l, destination_l] = cartesian_communicator.shift(i, -1);

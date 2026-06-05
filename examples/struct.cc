@@ -15,7 +15,7 @@ struct structure {
 
 // print elements of structure
 template<typename ch, typename tr>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out, const structure &s) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out, const structure& s) {
   out << '(' << s.d << ",[" << s.i[0];
   for (std::size_t i{1}; i < std::size(s.i); ++i)
     out << ',' << s.i[i];
@@ -31,7 +31,7 @@ struct structure_2 {
 
 // print elements of structure2
 template<typename ch, typename tr>
-std::basic_ostream<ch, tr> &operator<<(std::basic_ostream<ch, tr> &out, const structure_2 &s) {
+std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out, const structure_2& s) {
   return out << '(' << s.d << "," << s.str << ")";
 }
 
