@@ -3,7 +3,6 @@
 #define MPLR_REQUEST_HPP
 
 #include "mplr/impl/stopwatch.hpp"
-#include "mplr/impl/thread_stopwatch.hpp"
 
 #include <limits>
 #include <optional>
@@ -71,7 +70,9 @@ namespace mplr {
 
   namespace detail {
 
-    class lazy_spin_wait_helper {
+    // -- thread_stopwatch is SLOW so this approach seems not to be a good idea for now, but
+    // keep it here for future reference
+    /* class lazy_spin_wait_helper {
     public:
       lazy_spin_wait_helper(duty_ratio duty_ratio)
           : sleep_to_duty_ratio_{duty_ratio.sleep_to_duty_ratio()},
@@ -98,6 +99,28 @@ namespace mplr {
       double sleep_to_duty_ratio_;
       detail::stopwatch stopwatch_;
       detail::thread_stopwatch thread_stopwatch_;
+    }; */
+
+    class lazy_spin_wait_helper {
+    public:
+      lazy_spin_wait_helper(duty_ratio duty_ratio)
+          : sleep_to_duty_ratio_{duty_ratio.sleep_to_duty_ratio()}, stopwatch_{} {
+      }
+
+      void polling_loop_begin() {
+        stopwatch_.reset();
+      }
+
+      void polling_loop_end() {
+        const auto sleep_time{sleep_to_duty_ratio_ * stopwatch_.read()};
+        if (sleep_time > detail::stopwatch::duration::zero()) {
+          std::this_thread::sleep_for(sleep_to_duty_ratio_ * stopwatch_.read());
+        }
+      }
+
+    private:
+      double sleep_to_duty_ratio_;
+      detail::stopwatch stopwatch_;
     };
 
   }  // namespace detail
