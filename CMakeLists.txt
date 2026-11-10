@@ -1,13 +1,14 @@
 # 3.21 required for PROJECT_IS_TOP_LEVEL, 3.10 required for mpi targets, 3.5 required for boost targets
 cmake_minimum_required(VERSION 3.21)
 
-project(mplr VERSION 0.26.705 LANGUAGES CXX)
+set(MPLR_VERSION 0.26.1110)
+project(mplr VERSION ${MPLR_VERSION} LANGUAGES CXX)
 
 option(MPLR_BUILD_EXAMPLES "Build the mplr examples" ${PROJECT_IS_TOP_LEVEL})
 option(MPLR_INSTALL "Generate and install MPLR target" ${PROJECT_IS_TOP_LEVEL})
 
 if(MPLR_BUILD_EXAMPLES)
-  project(mplr LANGUAGES C)
+  project(mplr VERSION ${MPLR_VERSION} LANGUAGES C)
 endif()
 
 if(NOT DEFINED CACHE{BUILD_TESTING})
@@ -45,16 +46,37 @@ if(BUILD_TESTING)
 endif()
 
 if(MPLR_INSTALL)
-  install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/mplConfig.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mplr)
+  install(FILES
+      ${CMAKE_CURRENT_SOURCE_DIR}/cmake/mplrConfig.cmake
+      ${CMAKE_CURRENT_SOURCE_DIR}/cmake/mplConfig.cmake
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mplr)
 
   install(DIRECTORY mplr DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-  install(TARGETS mplr EXPORT mplTargets)
-  export(EXPORT mplTargets
+  install(TARGETS mplr EXPORT mplrTargets)
+  export(EXPORT mplrTargets
       NAMESPACE mplr::
-      FILE mplTargets.cmake)
-  install(EXPORT mplTargets
+      FILE mplrTargets.cmake)
+  install(EXPORT mplrTargets
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mplr
+      NAMESPACE mplr::
+      FILE mplrTargets.cmake)
+  # Keep the old mpl config working as well.
+  install(EXPORT mplrTargets
       DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mplr
       NAMESPACE mplr::
       FILE mplTargets.cmake)
+
+  write_basic_package_version_file(
+      ${CMAKE_CURRENT_BINARY_DIR}/mplrConfigVersion.cmake
+      VERSION ${MPLR_VERSION}
+      COMPATIBILITY SameMajorVersion)
+  write_basic_package_version_file(
+      ${CMAKE_CURRENT_BINARY_DIR}/mplConfigVersion.cmake
+      VERSION ${MPLR_VERSION}
+      COMPATIBILITY SameMajorVersion)
+  install(FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/mplrConfigVersion.cmake
+      ${CMAKE_CURRENT_BINARY_DIR}/mplConfigVersion.cmake
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mplr)
 endif()
