@@ -10,12 +10,13 @@
 **/*.dylib
 **/*.exe
 **/*.lib
+**/*.log
 **/*.o
 **/*.obj
 **/*.out
 **/*.so*
 **/*.swp
-**/build/
+**/build*/
 **/CMakeSettings.json
 **/GPATH
 **/GRTAGS
