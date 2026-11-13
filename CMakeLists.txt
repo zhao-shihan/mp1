@@ -80,3 +80,4 @@ if(MPLR_INSTALL)
       ${CMAKE_CURRENT_BINARY_DIR}/mplConfigVersion.cmake
       DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mplr)
 endif()
+target_compile_features(mp1 INTERFACE cxx_std_20)
