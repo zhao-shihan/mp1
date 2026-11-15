@@ -1,0 +1,118 @@
+name: Clang-Tidy
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tidy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
+
+jobs:
+  plan:
+    name: plan / pins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      openmpi_version: ${{ steps.pins.outputs.openmpi_version }}
+      openmpi_sha256: ${{ steps.pins.outputs.openmpi_sha256 }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Emit pins
+        id: pins
+        run: |
+          {
+            echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field version)"
+            echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field sha256)"
+          } >>"$GITHUB_OUTPUT"
+
+  tidy:
+    name: tidy
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Install pinned LLVM 21.1.8
+        uses: ./.github/actions/install-llvm-tidy
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-openmpi-${{ needs.plan.outputs.openmpi_version }}-${{ needs.plan.outputs.openmpi_sha256 }}-v2
+
+      - name: Install Open MPI
+        run: |
+          ci/install-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}" \
+            "${{ needs.plan.outputs.openmpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+
+      - name: Configure for the compilation database
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DMPI_C_COMPILER=mpicc \
+            -DMPI_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE=mpiexec \
+            -DMPIEXEC_PREFLAGS=--oversubscribe \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_EXAMPLES=ON \
+            -DMP1_INSTALL=OFF
+
+      - name: Verify clang-tidy configuration
+        run: |
+          clang-tidy --version
+          clang-tidy --verify-config --config-file=.clang-tidy
+
+      - name: Header check
+        run: ci/clang-tidy-headers.sh
+
+      - name: Changed lines
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          diff_script=$(command -v clang-tidy-diff.py || command -v clang-tidy-diff-21.py || true)
+          if [[ -z "$diff_script" ]]; then
+            diff_script=$(find "$(dirname "$(command -v clang-tidy)")/.." \
+              -name clang-tidy-diff.py -print -quit)
+          fi
+          if [[ -z "$diff_script" ]]; then
+            echo "clang-tidy-diff.py not found in the LLVM toolchain" >&2
+            exit 1
+          fi
+          git diff -U0 "$BASE_SHA" HEAD -- '*.cc' '*.cpp' '*.cxx' |
+            python3 "$diff_script" -p1 -path build -j 4 \
+              -config-file .clang-tidy \
+              -clang-tidy-binary "$(command -v clang-tidy)" \
+              -warnings-as-errors='*' \
+              -regex='^(?!test/(support|compile_fail)/).*\.(cc|cpp|cxx)$'

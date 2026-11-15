@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "mpi_floor": "4.1",
+  "notes": [
+    "The floor entry must advertise exactly MPI 4.1 (MPI 4.1 section 9.1.1): it is the oldest implementation the project supports.",
+    "A newer implementation may replace a provider entry only by updating this file (version, URL and SHA256).",
+    "Open MPI 6.0.0rc2 is provisional: no Open MPI 6.0 stable exists, and an RC never substitutes for the floor.",
+    "Every provider must be pinned by URL and SHA256; install-mpi.sh verifies the checksum.",
+    "require_features is an opt-in, job-specific feature gate: list 'shared' only for a provider that exposes a multi-process shared-memory domain. A provider without that capability stays in the matrix without 'shared', and the shared-memory scenario may skip there."
+  ],
+  "providers": [
+    {
+      "id": "mpich-4.3.2",
+      "family": "mpich",
+      "version": "4.3.2",
+      "tier": "floor",
+      "advertised_mpi_version": "4.1",
+      "url": "https://www.mpich.org/static/downloads/4.3.2/mpich-4.3.2.tar.gz",
+      "sha256": "47d774587a7156a53752218c811c852e70ac44db9c502dc3f399b4cb817e3818"
+    },
+    {
+      "id": "openmpi-6.0.0rc2",
+      "family": "openmpi",
+      "version": "6.0.0rc2",
+      "tier": "provisional",
+      "advertised_mpi_version": "5.0",
+      "url": "https://download.open-mpi.org/release/open-mpi/v6.0/openmpi-6.0.0rc2.tar.bz2",
+      "sha256": "d86da6723bd4096f9b7936ac32255c2daf7a6684322b08996928a4d06133ab67"
+    }
+  ],
+  "profiles": {
+    "pr": [
+      {
+        "provider": "mpich-4.3.2",
+        "name": "floor-mpich-4.3.2-debug",
+        "build_type": "Debug",
+        "compile_fail": true,
+        "example_smoke": true,
+        "require_features": [
+          "wrap"
+        ]
+      },
+      {
+        "provider": "openmpi-6.0.0rc2",
+        "name": "provisional-openmpi-6.0.0rc2-debug",
+        "build_type": "Debug",
+        "compile_fail": true,
+        "example_smoke": true,
+        "require_features": [
+          "wrap",
+          "shared"
+        ]
+      }
+    ],
+    "nightly": [
+      {
+        "provider": "mpich-4.3.2",
+        "name": "floor-mpich-4.3.2-debug",
+        "build_type": "Debug",
+        "compile_fail": true,
+        "example_smoke": true,
+        "extra_ranks": true,
+        "require_features": [
+          "wrap"
+        ]
+      },
+      {
+        "provider": "openmpi-6.0.0rc2",
+        "name": "provisional-openmpi-6.0.0rc2-debug",
+        "build_type": "Debug",
+        "compile_fail": true,
+        "example_smoke": true,
+        "extra_ranks": true,
+        "require_features": [
+          "wrap",
+          "shared"
+        ]
+      }
+    ]
+  }
+}

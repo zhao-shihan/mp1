@@ -1,9 +1,8 @@
-#include "mplr/mplr.hpp"
-
 #include <array>
 #include <complex>
 #include <cstdlib>
 #include <iostream>
+#include <mp1/mp1.hpp>
 #include <tuple>
 #include <utility>
 
@@ -54,25 +53,39 @@ std::basic_ostream<ch, tr>& operator<<(std::basic_ostream<ch, tr>& out, const st
 }
 
 
+// std::pair and std::tuple have built-in mp1 datatype mappings; std::array
+// uses its element's mapping.
+using pair_type = std::pair<int, double>;
+using tuple_type = std::tuple<int, std::complex<double>>;
+
+
 // send some item of a standard type
 template<typename T>
-void send(const mplr::communicator& comm, const T& x) {
-  comm.send(x, 1);
+void send(const mp1::mpi_communicator& comm, const T& x) {
+  mp1::send(comm, x, 1);
 }
 
 
 // receive some item of a standard type
 template<typename T>
-void recv(const mplr::communicator& comm) {
+void recv(const mp1::mpi_communicator& comm) {
   T x;
-  comm.recv(x, 0);
+  mp1::recv(comm, x, 0);
   std::cout << "x = " << std::boolalpha << x << '\n';
 }
 
 
+// receive a fixed-size std::array; the array extent is the capacity
+void recv_int_array(const mp1::mpi_communicator& comm) {
+  std::array<int, 4> x;
+  const auto s{mp1::recv(comm, x, 0)};
+  std::cout << "x = " << x << " with " << s.get_count<int>() << " elements\n";
+}
+
+
 int main() {
-  mplr::init();
-  const auto comm_world{mplr::comm_world()};
+  mp1::environment env;
+  const auto comm_world{mp1::comm_world()};
   // run the program with two or more processes
   if (comm_world.size() < 2)
     comm_world.abort(EXIT_FAILURE);
@@ -114,9 +127,9 @@ int main() {
     send(comm_world, t_17);
     std::complex<long double> t_18{3.4, -3.4};
     send(comm_world, t_18);
-    std::pair<int, double> t_19{-2, 0.1234};
+    pair_type t_19{-2, 0.1234};
     send(comm_world, t_19);
-    std::tuple<int, std::complex<double>> t_20{-2, {0.1234, 1.0}};
+    tuple_type t_20{-2, {0.1234, 1.0}};
     send(comm_world, t_20);
     std::array<int, 4> t_21{1, 2, 3, 4};
     send(comm_world, t_21);
@@ -143,9 +156,9 @@ int main() {
     recv<std::complex<float>>(comm_world);
     recv<std::complex<double>>(comm_world);
     recv<std::complex<long double>>(comm_world);
-    recv<std::pair<int, double>>(comm_world);
-    recv<std::tuple<int, std::complex<double>>>(comm_world);
-    recv<std::array<int, 4>>(comm_world);
+    recv<pair_type>(comm_world);
+    recv<tuple_type>(comm_world);
+    recv_int_array(comm_world);
     recv<std::byte>(comm_world);
   }
   return EXIT_SUCCESS;

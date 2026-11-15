@@ -1,9 +1,11 @@
-#define BOOST_TEST_MODULE communicator_isend_irecv
+// Nonblocking point-to-point tests: isend/ibsend/issend/irsend with every supported scalar,
+// container and iterator-range send form, and matching irecv forms with request::test().
 
-#include "boost/test/included/unit_test.hpp"
-#include "mplr/mplr.hpp"
+#include "mp1/mp1.hpp"
 #include "test_helper.hpp"
 
+#include <array>
+#include <boost/test/unit_test.hpp>
 #include <complex>
 #include <cstddef>
 #include <limits>
@@ -11,20 +13,85 @@
 #include <set>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 
+namespace {
+
+  template<typename T>
+  mp1::request isend_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    if constexpr (has_size<T>::value)
+      return mp1::isend(comm, data, dest);
+    else
+      return mp1::isend(comm, data, dest);
+  }
+
+  template<typename T>
+  mp1::request ibsend_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    if constexpr (has_size<T>::value)
+      return mp1::ibsend(comm, data, dest);
+    else
+      return mp1::ibsend(comm, data, dest);
+  }
+
+  template<typename T>
+  mp1::request issend_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    if constexpr (has_size<T>::value)
+      return mp1::issend(comm, data, dest);
+    else
+      return mp1::issend(comm, data, dest);
+  }
+
+  template<typename T>
+  mp1::request irsend_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    if constexpr (has_size<T>::value)
+      return mp1::irsend(comm, data, dest);
+    else
+      return mp1::irsend(comm, data, dest);
+  }
+
+  template<typename T>
+  void prepare_recv(T& data_r, std::size_t n) {
+    if constexpr (has_resize<T>())
+      data_r.resize(n);
+    else
+      (void)data_r, (void)n;
+  }
+
+  // Nonblocking receive: the bounded policy (4) for a resizable container and the fixed
+  // policy (2) for std::array.  A sequence container is send-only; its staged send is
+  // exercised by isend_sequence_test().
+  template<typename T>
+  mp1::request post_container_recv(const mp1::mpi_communicator& comm, T& data_r,
+                                   std::size_t n) {
+    if constexpr (has_resize<T>())
+      return mp1::irecv(comm, data_r, mp1::capacity{static_cast<mp1::count_t>(n)}, 0);
+    else {
+      (void)n;
+      return mp1::irecv(comm, data_r, 0);
+    }
+  }
+
+  template<typename T>
+  mp1::request post_scalar_recv(const mp1::mpi_communicator& comm, T& data_r) {
+    return mp1::irecv(comm, data_r, 0);
+  }
+
+}  // namespace
+
+
 bool isend_irecv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.isend(1)};
+    auto r{mp1::isend(comm_world, std::span<int>{}, 1)};
     r.wait();
   }
   if (comm_world.rank() == 1) {
-    auto r{comm_world.irecv(0)};
+    auto r{mp1::irecv(comm_world, std::span<int>{}, 0)};
     while (not r.test()) {
     }
   }
@@ -34,17 +101,24 @@ bool isend_irecv_test() {
 
 template<typename T>
 bool isend_irecv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.isend(data, 1)};
+    auto r{isend_value(comm_world, data, 1)};
     r.wait();
   }
   if (comm_world.rank() == 1) {
     T data_r;
-    auto r{comm_world.irecv(data_r, 0)};
-    while (not r.test()) {
+    if constexpr (has_size<T>::value) {
+      prepare_recv(data_r, data.size());
+      auto r = post_container_recv(comm_world, data_r, data.size());
+      while (not r.test()) {
+      }
+    } else {
+      auto r = post_scalar_recv(comm_world, data_r);
+      while (not r.test()) {
+      }
     }
     return data_r == data;
   }
@@ -54,44 +128,42 @@ bool isend_irecv_test(const T& data) {
 
 template<typename T>
 bool isend_irecv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.isend(std::begin(data), std::end(data), 1)};
+    auto r = [&] {
+      if constexpr (std::ranges::contiguous_range<T>)
+        return mp1::isend(comm_world, std::ranges::subrange{std::begin(data), std::end(data)},
+                          1);
+      else
+        return mp1::isend(comm_world, data, 1);
+    }();
     r.wait();
   }
   if (comm_world.rank() == 1) {
     T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      auto r{comm_world.irecv(data_r, 0)};
-      while (not r.test()) {
-      }
-      return data_r == data;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      auto r{comm_world.irecv(std::begin(data_r), std::end(data_r), 0)};
-      while (not r.test()) {
-      }
-      return data_r == data;
+    prepare_recv(data_r, data.size());
+    auto r = post_container_recv(comm_world, data_r, data.size());
+    while (not r.test()) {
     }
+    return data_r == data;
   }
   return true;
 }
 
 
 bool ibsend_irecv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    mplr::bsend_buffer buff(mplr::bsend_overhead);
-    auto r{comm_world.ibsend(1)};
+    mp1::bsend_buffer buff(mp1::bsend_overhead);
+    auto r{mp1::ibsend(comm_world, std::span<int>{}, 1)};
     r.wait();
   }
   if (comm_world.rank() == 1) {
-    auto r{comm_world.irecv(0)};
+    auto r{mp1::irecv(comm_world, std::span<int>{}, 0)};
     while (not r.test()) {
     }
   }
@@ -101,23 +173,25 @@ bool ibsend_irecv_test() {
 
 template<typename T>
 bool ibsend_irecv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    int size;
-    if constexpr (has_size<T>::value)
-      size = comm_world.bsend_size<typename T::value_type>(data.size());
-    else
-      size = comm_world.bsend_size<T>();
-    mplr::bsend_buffer buff(size);
-    auto r{comm_world.ibsend(data, 1)};
+    mp1::bsend_buffer buff(payload_size_bytes(data));
+    auto r{ibsend_value(comm_world, data, 1)};
     r.wait();
   }
   if (comm_world.rank() == 1) {
     T data_r;
-    auto r{comm_world.irecv(data_r, 0)};
-    while (not r.test()) {
+    if constexpr (has_size<T>::value) {
+      prepare_recv(data_r, data.size());
+      auto r = post_container_recv(comm_world, data_r, data.size());
+      while (not r.test()) {
+      }
+    } else {
+      auto r = post_scalar_recv(comm_world, data_r);
+      while (not r.test()) {
+      }
     }
     return data_r == data;
   }
@@ -127,49 +201,42 @@ bool ibsend_irecv_test(const T& data) {
 
 template<typename T>
 bool ibsend_irecv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    int size;
-    if constexpr (has_size<T>::value)
-      size = comm_world.bsend_size<typename T::value_type>(data.size());
-    else
-      size = comm_world.bsend_size<T>();
-    mplr::bsend_buffer buff(size);
-    auto r{comm_world.ibsend(std::begin(data), std::end(data), 1)};
+    mp1::bsend_buffer buff(payload_size_bytes(data));
+    auto r = [&] {
+      if constexpr (std::ranges::contiguous_range<T>)
+        return mp1::ibsend(comm_world, std::ranges::subrange{std::begin(data), std::end(data)},
+                           1);
+      else
+        return mp1::ibsend(comm_world, data, 1);
+    }();
     r.wait();
   }
   if (comm_world.rank() == 1) {
     T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      auto r{comm_world.irecv(data_r, 0)};
-      while (not r.test()) {
-      }
-      return data_r == data;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      auto r{comm_world.irecv(std::begin(data_r), std::end(data_r), 0)};
-      while (not r.test()) {
-      }
-      return data_r == data;
+    prepare_recv(data_r, data.size());
+    auto r = post_container_recv(comm_world, data_r, data.size());
+    while (not r.test()) {
     }
+    return data_r == data;
   }
   return true;
 }
 
 
 bool issend_irecv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.issend(1)};
-    r.wait(mplr::duty_ratio::preset::moderate);
+    auto r{mp1::issend(comm_world, std::span<int>{}, 1)};
+    r.wait();
   }
   if (comm_world.rank() == 1) {
-    auto r{comm_world.irecv(0)};
+    auto r{mp1::irecv(comm_world, std::span<int>{}, 0)};
     while (not r.test()) {
     }
   }
@@ -179,17 +246,24 @@ bool issend_irecv_test() {
 
 template<typename T>
 bool issend_irecv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.issend(data, 1)};
-    r.wait(mplr::duty_ratio::preset::moderate);
+    auto r{issend_value(comm_world, data, 1)};
+    r.wait();
   }
   if (comm_world.rank() == 1) {
     T data_r;
-    auto r{comm_world.irecv(data_r, 0)};
-    while (not r.test()) {
+    if constexpr (has_size<T>::value) {
+      prepare_recv(data_r, data.size());
+      auto r = post_container_recv(comm_world, data_r, data.size());
+      while (not r.test()) {
+      }
+    } else {
+      auto r = post_scalar_recv(comm_world, data_r);
+      while (not r.test()) {
+      }
     }
     return data_r == data;
   }
@@ -199,146 +273,113 @@ bool issend_irecv_test(const T& data) {
 
 template<typename T>
 bool issend_irecv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.issend(std::begin(data), std::end(data), 1)};
-    r.wait(mplr::duty_ratio::preset::moderate);
+    auto r = [&] {
+      if constexpr (std::ranges::contiguous_range<T>)
+        return mp1::issend(comm_world, std::ranges::subrange{std::begin(data), std::end(data)},
+                           1);
+      else
+        return mp1::issend(comm_world, data, 1);
+    }();
+    r.wait();
   }
   if (comm_world.rank() == 1) {
     T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      auto r{comm_world.irecv(data_r, 0)};
-      while (not r.test()) {
-      }
-      return data_r == data;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      auto r{comm_world.irecv(std::begin(data_r), std::end(data_r), 0)};
-      while (not r.test()) {
-      }
-      return data_r == data;
+    prepare_recv(data_r, data.size());
+    auto r = post_container_recv(comm_world, data_r, data.size());
+    while (not r.test()) {
     }
+    return data_r == data;
   }
   return true;
 }
 
 
 bool irsend_irecv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    comm_world.barrier();
-    auto r{comm_world.irsend(1)};
-    r.wait(mplr::duty_ratio::preset::moderate);
+    mp1::barrier(comm_world);
+    auto r{mp1::irsend(comm_world, std::span<int>{}, 1)};
+    r.wait();
   } else if (comm_world.rank() == 1) {
-    mplr::irequest r{comm_world.irecv(0)};
-    comm_world.barrier();
+    auto r{mp1::irecv(comm_world, std::span<int>{}, 0)};
+    mp1::barrier(comm_world);
     while (not r.test()) {
     }
   } else
-    comm_world.barrier();
+    mp1::barrier(comm_world);
   return true;
 }
 
 
 template<typename T>
 bool irsend_irecv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    comm_world.barrier();
-    auto r{comm_world.irsend(data, 1)};
-    r.wait(mplr::duty_ratio::preset::moderate);
+    mp1::barrier(comm_world);
+    auto r{irsend_value(comm_world, data, 1)};
+    r.wait();
   } else if (comm_world.rank() == 1) {
-    // must ensure that MPI_Recv is called before mplr::communicator::rsend
-    if constexpr (has_begin_end<T>() and has_size<T>() and has_resize<T>()) {
-      // T is an STL container
-      T data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
-      r.wait(mplr::duty_ratio{0.03});
-      return data_r == data;
-    } else if constexpr (has_begin_end<T>() and has_size<T>()) {
-      // T is an STL container without resize member, e.g., std::set
-      std::vector<typename T::value_type> data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
+    T data_r;
+    if constexpr (has_size<T>::value) {
+      prepare_recv(data_r, data.size());
+      auto r = post_container_recv(comm_world, data_r, data.size());
+      mp1::barrier(comm_world);
       while (not r.test()) {
       }
-      return std::equal(begin(data_r), end(data_r), begin(data));
     } else {
-      // T is some fundamental type
-      // mplr::communicator::irecv does not suffice in the cases above as the irecv performs a
-      // probe first to receive STL containers
-      T data_r;
-      mplr::irequest r{comm_world.irecv(data_r, 0)};
-      comm_world.barrier();
+      auto r = post_scalar_recv(comm_world, data_r);
+      mp1::barrier(comm_world);
       while (not r.test()) {
       }
-      return data_r == data;
     }
+    return data_r == data;
   } else
-    comm_world.barrier();
+    mp1::barrier(comm_world);
   return true;
 }
 
 
 template<typename T>
 bool irsend_irecv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    comm_world.barrier();
-    auto r{comm_world.irsend(std::begin(data), std::end(data), 1)};
+    mp1::barrier(comm_world);
+    auto r = [&] {
+      if constexpr (std::ranges::contiguous_range<T>)
+        return mp1::irsend(comm_world, std::ranges::subrange{std::begin(data), std::end(data)},
+                           1);
+      else
+        return mp1::irsend(comm_world, data, 1);
+    }();
     while (not r.test()) {
     }
   } else if (comm_world.rank() == 1) {
-    // must ensure that MPI_Recv is called before mplr::communicator::rsend
-    if constexpr (has_begin_end<T>() and has_size<T>() and has_resize<T>()) {
-      T data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
-      while (not r.test()) {
-      }
-      return data_r == data;
-    } else if constexpr (has_begin_end<T>() and has_size<T>()) {
-      // T is an STL container without resize member, e.g., std::set
-      std::vector<typename T::value_type> data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
-      while (not r.test()) {
-      }
-      return std::equal(begin(data_r), end(data_r), begin(data));
-    } else {
-      // T is some fundamental type
-      // mplr::communicator::irecv does not suffice in the cases above as the irecv performs a
-      // probe first to receive STL containers
-      T data_r;
-      mplr::irequest r{comm_world.irecv(data_r, 0)};
-      comm_world.barrier();
-      while (not r.test()) {
-      }
-      return data_r == data;
+    T data_r;
+    prepare_recv(data_r, data.size());
+    auto r = post_container_recv(comm_world, data_r, data.size());
+    mp1::barrier(comm_world);
+    while (not r.test()) {
     }
+    return data_r == data;
   } else
-    comm_world.barrier();
+    mp1::barrier(comm_world);
   return true;
 }
 
 
 BOOST_AUTO_TEST_CASE(isend_irecv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(isend_irecv_test());
@@ -379,19 +420,15 @@ BOOST_AUTO_TEST_CASE(isend_irecv) {
   BOOST_TEST(isend_irecv_test(std::string{"Hello World"}));
   BOOST_TEST(isend_irecv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(isend_irecv_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(isend_irecv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(isend_irecv_test(std::set<int>{1, 2, 3, 4, 5}));
   // iterators
   BOOST_TEST(isend_irecv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(isend_irecv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(isend_irecv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(isend_irecv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
 }
 
 
 BOOST_AUTO_TEST_CASE(ibsend_irecv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(ibsend_irecv_test());
@@ -432,19 +469,15 @@ BOOST_AUTO_TEST_CASE(ibsend_irecv) {
   BOOST_TEST(ibsend_irecv_test(std::string{"Hello World"}));
   BOOST_TEST(ibsend_irecv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(ibsend_irecv_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ibsend_irecv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ibsend_irecv_test(std::set<int>{1, 2, 3, 4, 5}));
   // iterators
   BOOST_TEST(ibsend_irecv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(ibsend_irecv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ibsend_irecv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ibsend_irecv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
 }
 
 
 BOOST_AUTO_TEST_CASE(issend_irecv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(issend_irecv_test());
@@ -485,19 +518,15 @@ BOOST_AUTO_TEST_CASE(issend_irecv) {
   BOOST_TEST(issend_irecv_test(std::string{"Hello World"}));
   BOOST_TEST(issend_irecv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(issend_irecv_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(issend_irecv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(issend_irecv_test(std::set<int>{1, 2, 3, 4, 5}));
   // iterators
   BOOST_TEST(issend_irecv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(issend_irecv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(issend_irecv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(issend_irecv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
 }
 
 
 BOOST_AUTO_TEST_CASE(irsend_irecv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(irsend_irecv_test());
@@ -538,11 +567,7 @@ BOOST_AUTO_TEST_CASE(irsend_irecv) {
   BOOST_TEST(irsend_irecv_test(std::string{"Hello World"}));
   BOOST_TEST(irsend_irecv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(irsend_irecv_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(irsend_irecv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(irsend_irecv_test(std::set<int>{1, 2, 3, 4, 5}));
   // iterators
   BOOST_TEST(irsend_irecv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(irsend_irecv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(irsend_irecv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(irsend_irecv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
 }

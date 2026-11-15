@@ -1,0 +1,458 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
+  # The provider install step puts its launcher on PATH before configure.  The
+  # name is standard across the matrix providers; a job can override it.
+  MPIEXEC_EXECUTABLE: mpiexec
+
+jobs:
+  plan:
+    name: plan / MPI matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      openmpi_version: ${{ steps.pins.outputs.openmpi_version }}
+      openmpi_sha256: ${{ steps.pins.outputs.openmpi_sha256 }}
+      mpich_floor_version: ${{ steps.pins.outputs.mpich_floor_version }}
+      mpich_floor_sha256: ${{ steps.pins.outputs.mpich_floor_sha256 }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate the MPI matrix
+        run: |
+          python3 ci/matrix-plan.py --list
+          python3 ci/matrix-plan.py --profile pr --format text
+          python3 ci/matrix-plan.py --profile nightly --format text
+
+      - name: Emit the PR matrix
+        id: plan
+        run: |
+          matrix=$(python3 ci/matrix-plan.py --profile pr --format github)
+          {
+            echo "matrix<<MP1_MATRIX_EOF"
+            printf '%s\n' "$matrix"
+            echo "MP1_MATRIX_EOF"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Emit provider pins
+        id: pins
+        run: |
+          {
+            echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field version)"
+            echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field sha256)"
+            echo "mpich_floor_version=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field version)"
+            echo "mpich_floor_sha256=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field sha256)"
+          } >>"$GITHUB_OUTPUT"
+
+  build:
+    name: build / ${{ matrix.name }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/${{ matrix.mpi }}-${{ matrix.mpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-${{ matrix.mpi }}-${{ matrix.mpi_version }}-${{ matrix.mpi_sha256 }}-v2
+
+      - name: Install MPI
+        run: |
+          ci/install-mpi.sh "${{ matrix.mpi }}" "${{ matrix.mpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/${{ matrix.mpi }}-${{ matrix.mpi_version }}" \
+            "${{ matrix.mpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/${{ matrix.mpi }}-${{ matrix.mpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity and floor
+        run: |
+          ci/assert-mpi.sh "${{ matrix.mpi }}" "${{ matrix.mpi_version }}" "${{ matrix.tier }}"
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE="${{ matrix.build_type }}" \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS="${{ matrix.mpiexec_preflags }}" \
+            -DCMAKE_CXX_FLAGS="${{ matrix.cxx_flags }}" \
+            -DMP1_TEST_EXTRA_RANKS=${{ matrix.extra_ranks }} \
+            -DMP1_TEST_REQUIRE_FEATURES="${{ join(matrix.require_features, ';') }}" \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_PERF=ON \
+            -DMP1_BUILD_EXAMPLES=${{ matrix.example_smoke }}
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Assert C++20 compile commands
+        run: ci/assert-cxx20.sh build
+
+      - name: Test
+        run: |
+          ci/run-ctest.sh --test-dir build -LE 'compile-fail|example' \
+            --output-on-failure --timeout 180
+
+      # CTest reports 77 as "Skipped" and would leave a required-capability leg
+      # green, so run the scenario directly as well.  MP1_REQUIRE_SHARED=1
+      # makes a missing multi-process shared-memory domain exit 1 instead.
+      - name: Required shared-memory RMA gate
+        if: contains(matrix.require_features, 'shared')
+        run: |
+          MP1_REQUIRE_SHARED=1 "$MPIEXEC_EXECUTABLE" ${{ matrix.mpiexec_preflags }} \
+            -n 2 build/test/mp1_test_rma_shared
+
+      - name: Compile-fail probes and runner self-check
+        if: matrix.compile_fail
+        run: |
+          ci/run-ctest.sh --test-dir build -L 'compile-fail' \
+            --output-on-failure --timeout 120
+
+      - name: Example smoke
+        if: matrix.example_smoke
+        run: |
+          for example in gatherv matrix_gather vibrating_string_mp1 rma; do
+            "$MPIEXEC_EXECUTABLE" ${{ matrix.mpiexec_preflags }} -n 4 \
+              "build/examples/${example}" >/dev/null
+          done
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-${{ matrix.name }}
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  # Clang build/test leg.  Clang is otherwise only used by clang-tidy; this
+  # leg proves the C++20 public headers, tests and examples compile and run
+  # with a Clang driver.  The MPI library is the provisional Open MPI build;
+  # only the application translation units are compiled by Clang.
+  clang:
+    name: clang / C++20
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang cmake ninja-build libboost-test-dev
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-openmpi-${{ needs.plan.outputs.openmpi_version }}-${{ needs.plan.outputs.openmpi_sha256 }}-v2
+
+      - name: Install Open MPI
+        run: |
+          ci/install-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}" \
+            "${{ needs.plan.outputs.openmpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DMPI_C_COMPILER=mpicc \
+            -DMPI_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS=--oversubscribe \
+            -DMP1_TEST_REQUIRE_FEATURES="wrap;shared" \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_PERF=ON \
+            -DMP1_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Assert C++20 compile commands
+        run: ci/assert-cxx20.sh build
+
+      - name: Test
+        run: |
+          ci/run-ctest.sh --test-dir build -LE 'compile-fail|example' \
+            --output-on-failure --timeout 180
+
+      - name: Compile-fail probes and runner self-check
+        run: |
+          ci/run-ctest.sh --test-dir build -L 'compile-fail' \
+            --output-on-failure --timeout 120
+
+      - name: Required shared-memory RMA gate
+        run: |
+          MP1_REQUIRE_SHARED=1 "$MPIEXEC_EXECUTABLE" --oversubscribe \
+            -n 2 build/test/mp1_test_rma_shared
+
+      - name: Example smoke
+        run: |
+          for example in gatherv matrix_gather vibrating_string_mp1 rma; do
+            "$MPIEXEC_EXECUTABLE" --oversubscribe -n 4 \
+              "build/examples/${example}" >/dev/null
+          done
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-clang
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  package-consumer:
+    name: package / consumer
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-openmpi-${{ needs.plan.outputs.openmpi_version }}-${{ needs.plan.outputs.openmpi_sha256 }}-v2
+
+      - name: Install MPI
+        run: |
+          ci/install-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}" \
+            "${{ needs.plan.outputs.openmpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+
+      - name: Build and install mp1
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DBUILD_TESTING=OFF \
+            -DMP1_BUILD_EXAMPLES=OFF
+          cmake --build build --parallel 2
+          cmake --install build --prefix "$RUNNER_TEMP/mp1-prefix"
+
+      - name: Check install manifest
+        run: |
+          prefix="$RUNNER_TEMP/mp1-prefix"
+          test -f "$prefix/include/mp1/mp1.hpp"
+          test -f "$prefix/include/mp1/version.hpp"
+          test -f "$prefix/include/mp1/impl/fwd.hpp"
+          test ! -e "$prefix/include/mp1/legacy"
+          test ! -e "$prefix/include/mp1/version.hpp.in"
+          top_headers=$(find "$prefix/include/mp1" -maxdepth 1 -name '*.hpp' \
+            -printf '%f\n' | sort | tr '\n' ' ')
+          test "$top_headers" = "mp1.hpp version.hpp "
+          grep -qF "MP1_VERSION_STRING \"$(cat VERSION)\"" \
+            "$prefix/include/mp1/version.hpp"
+          test -f "$prefix/lib/cmake/mp1/mp1Config.cmake"
+          test -f "$prefix/lib/cmake/mp1/mp1ConfigVersion.cmake"
+          test -f "$prefix/lib/cmake/mp1/mp1Targets.cmake"
+          count=$(find "$prefix/lib/cmake/mp1" -maxdepth 1 -type f | wc -l)
+          count="${count//[[:space:]]/}"
+          [[ "$count" -eq 3 ]]
+          if find "$prefix" -iname 'mpl*' | grep -q .; then
+            echo "stale old package files in the install tree" >&2
+            exit 1
+          fi
+          test ! -e build/mp1Targets.cmake
+
+      - name: Build and run consumer
+        run: |
+          prefix="$RUNNER_TEMP/mp1-prefix"
+          cmake -S test/consumer -B build-consumer -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCMAKE_PREFIX_PATH="$prefix"
+          cmake --build build-consumer --parallel 2
+          ci/check-consumer-version.sh "$MPIEXEC_EXECUTABLE" -n 2 ./build-consumer/consumer
+
+      # The installed umbrella must reject an explicit C++17 compile even when
+      # the imported target is bypassed (the CMake feature is not a substitute
+      # for a fail-closed header).
+      - name: C++17 consumer fails closed
+        run: ci/check-cxx20-guard.sh "$RUNNER_TEMP/mp1-prefix"
+
+  static:
+    name: static
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install static tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-venv shellcheck
+
+      - name: Run identity and hygiene gate
+        run: ci/static-checks.sh
+
+      - name: Check shell scripts
+        run: shellcheck ci/*.sh
+
+      - name: Check whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # `git diff --check` without a range is a no-op on a clean checkout
+          # Check the pushed commit and, for a PR, the whole range.
+          git show --check "$GITHUB_SHA"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check "$BASE_SHA" HEAD
+          fi
+
+      - name: Check formatting
+        run: |
+          # 21.1.8 is the version that validated the current tree.  Formatting
+          # output changes between releases, so the exact wheel is a hard gate;
+          # an unavailable pin fails the job instead of falling back fail-open.
+          python3 -m venv "$RUNNER_TEMP/fmt"
+          "$RUNNER_TEMP/fmt/bin/pip" install --quiet "clang-format==21.1.8"
+          CF="$RUNNER_TEMP/fmt/bin/clang-format"
+          mapfile -t files < <(git ls-files 'mp1/*.hpp' 'mp1/**/*.hpp')
+          if "$CF" --style=file --dry-run --Werror "${files[@]}"; then
+            exit 0
+          fi
+          echo "::error::clang-format 21.1.8 differences found"
+          "$CF" --style=file -i "${files[@]}"
+          git diff --stat
+          git diff
+          git checkout -- .
+          exit 1
+
+  # AddressSanitizer and UndefinedBehaviorSanitizer in one leg: the toolchain
+  # and provider used here support both, so a separate build is not needed.
+  # The runtime subset below is a fail-closed sample of the contract tests,
+  # including the reduction-layout and RMA lifetime/shape regressions that ASan
+  # detects.
+  asan:
+    name: asan
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-openmpi-${{ needs.plan.outputs.openmpi_version }}-${{ needs.plan.outputs.openmpi_sha256 }}-v2
+
+      - name: Install MPI
+        run: |
+          ci/install-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}" \
+            "${{ needs.plan.outputs.openmpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS=--oversubscribe \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DMP1_TEST_REQUIRE_FEATURES=shared \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Assert C++20 compile commands
+        run: ci/assert-cxx20.sh build
+
+      - name: Run ASan + UBSan subset
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          # Contract regressions covered by sanitizers: layout/reduction
+          # lowering, p2p receive-role and isendrecv forms, dense variable
+          # collectives, dense/typed file access, RMA shapes/lifetime, and the
+          # persistent-collective entries.  A name that is absent from an older
+          # tree simply does not match; --no-tests=error still fails the step
+          # if the regex matches nothing at all.
+          ci/run-ctest.sh --test-dir build \
+            -R '^(test_environment_owned|test_environment_external|test_request_contract|test_layout_contract|test_p2p_contract|test_p2p_receive_layout_role_contract|test_p2p_isendrecv_contract|test_p2p_persistent_container|test_collective_contract|test_collective_dense_contract|test_reduction_layout_shift|test_file_spawn_contract|test_file_dense_contract|test_file_nonblocking_dense_contract|test_file_typed_view_contract|test_mpi41_extras|test_rma_contract|test_rma_shapes_contract|test_rma_shared|test_communicator_persistent_collective|test_persistent_collective_contract)\.' \
+            --output-on-failure --no-tests=error --timeout 180

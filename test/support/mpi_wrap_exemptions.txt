@@ -1,0 +1,231 @@
+# MPI entry points that are deliberately not counted by the call-count gates.
+#
+# The harness_wrap_coverage check scans every `MPI_*(...)` call in mp1/impl/**
+# and fails if it is neither in mpi_wrap_symbols.hpp nor on this list.  Keep
+# this list short and explicit: add a symbol only when the operation is not
+# part of a deterministic performance gate.  Gate-critical calls belong in
+# mpi_wrap_symbols.hpp with a wrapper definition in mpi_wrap.cc.
+#
+# One symbol per line; '#' starts a comment.
+
+# lifecycle, error and environment queries.  MPI_Initialized and MPI_Finalized are
+# wrapped (the release-path lifecycle gates count them); the rest are behavior-tested only.
+MPI_Query_thread
+MPI_Is_thread_main
+MPI_Get_version
+MPI_Get_library_version
+MPI_Get_processor_name
+MPI_Wtime
+MPI_Wtick
+MPI_Abort
+MPI_Error_string
+MPI_Error_class
+
+# communicator and group construction / queries
+MPI_Comm_remote_size
+MPI_Comm_compare
+MPI_Comm_group
+MPI_Comm_dup
+MPI_Comm_dup_with_info
+MPI_Comm_split
+MPI_Comm_split_type
+MPI_Comm_create
+MPI_Comm_create_group
+MPI_Intercomm_create
+MPI_Group_incl
+MPI_Group_excl
+MPI_Group_union
+MPI_Group_intersection
+MPI_Group_difference
+MPI_Group_size
+MPI_Group_rank
+MPI_Group_translate_ranks
+MPI_Group_compare
+
+# attribute and error-handler plumbing
+MPI_Comm_get_attr
+MPI_Comm_create_errhandler
+MPI_Comm_set_errhandler
+MPI_Comm_get_errhandler
+MPI_Win_set_errhandler
+MPI_Win_get_errhandler
+MPI_File_set_errhandler
+MPI_File_get_errhandler
+
+# info
+MPI_Info_create
+MPI_Info_create_env
+MPI_Info_dup
+MPI_Info_get_string
+MPI_Info_set
+MPI_Info_delete
+MPI_Info_get_nkeys
+MPI_Info_get_nthkey
+
+# datatype construction, metadata and names
+MPI_Type_contiguous
+MPI_Type_contiguous_c
+MPI_Type_vector
+MPI_Type_vector_c
+MPI_Type_create_indexed_block
+MPI_Type_create_indexed_block_c
+MPI_Type_create_hindexed_block
+MPI_Type_create_subarray
+MPI_Type_create_struct
+MPI_Type_create_resized
+MPI_Type_size
+MPI_Type_size_c
+MPI_Type_get_extent_c
+MPI_Type_get_true_extent_c
+MPI_Type_get_envelope
+
+# status and reduction operators
+MPI_Get_count
+MPI_Get_elements_c
+MPI_Test_cancelled
+MPI_Buffer_attach
+MPI_Buffer_detach
+
+# MPI address arithmetic (MPI 4.1 5.1.5): pure queries, not call-count gate
+# targets. The address-arithmetic static check and its geometry tests cover the call sites.
+MPI_Aint_add
+MPI_Aint_diff
+
+# non-variable collectives (variable families are wrapped)
+MPI_Gather
+MPI_Scatter
+
+# file I/O (open/close/read/write are not call-count gate targets; close is
+# wrapped separately)
+MPI_File_open
+MPI_File_read_at
+MPI_File_seek
+MPI_File_seek_shared
+MPI_File_set_view
+MPI_File_get_size
+MPI_File_set_size
+MPI_File_get_group
+MPI_File_get_amode
+MPI_File_set_info
+MPI_File_set_atomicity
+MPI_File_get_atomicity
+MPI_File_get_type_extent
+MPI_File_get_info
+MPI_File_sync
+MPI_File_set_errhandler
+
+# datatype/layout construction; these are not perf-gate counters
+MPI_Type_create_struct_c
+MPI_Type_create_hvector_c
+MPI_Type_indexed_c
+
+# communicator/group/p2p symbols not used as perf-gate counters
+MPI_Comm_remote_group
+MPI_Comm_get_info
+MPI_Comm_set_info
+MPI_Intercomm_merge
+MPI_Mrecv_c
+MPI_Imrecv_c
+MPI_GROUP_NULL
+
+# file operations / MPI types (not perf-gate counters)
+MPI_Status
+MPI_Offset
+MPI_File_delete
+MPI_File_preallocate
+MPI_File_get_position
+MPI_File_get_position_shared
+MPI_File_get_byte_offset
+MPI_File_read_at_all_end
+MPI_File_write_at_all_end
+MPI_File_read_all_end
+MPI_File_write_all_end
+MPI_File_read_ordered_end
+MPI_File_write_ordered_end
+
+# fixed-size collectives (not perf-gate counters; variable families are wrapped)
+MPI_Ibarrier
+MPI_Bcast_c
+MPI_Ibcast_c
+MPI_Igather_c
+MPI_Iscatter_c
+MPI_Iallgather_c
+MPI_Ialltoall_c
+
+# RMA windows and data movement.  The accumulating _c calls and the datatype-walk
+# metadata queries are wrapped for the homogeneous-contract test; put/get, the request
+# put/get forms and the single-element atomics are not call-count gate targets.
+MPI_Win_create
+MPI_Win_allocate
+MPI_Win_allocate_shared
+MPI_Win_create_dynamic
+MPI_Win_get_attr
+MPI_Win_get_group
+MPI_Win_get_info
+MPI_Win_set_info
+MPI_Win_shared_query
+MPI_Win_attach
+MPI_Win_detach
+MPI_Win_fence
+MPI_Win_lock
+MPI_Win_lock_all
+MPI_Win_unlock
+MPI_Win_unlock_all
+MPI_Win_flush
+MPI_Win_flush_all
+MPI_Win_flush_local
+MPI_Win_flush_local_all
+MPI_Win_sync
+MPI_Win_post
+MPI_Win_start
+MPI_Win_complete
+MPI_Win_wait
+MPI_Win_test
+MPI_Put_c
+MPI_Get_c
+MPI_Fetch_and_op
+MPI_Compare_and_swap
+MPI_Rput_c
+MPI_Rget_c
+MPI_WIN_CREATE_FLAVOR
+MPI_WIN_DISP_UNIT
+MPI_WIN_MODEL
+MPI_Alloc_mem
+MPI_PROC_NULL
+# Status-field constants named in comments immediately before a parenthesized standard
+# citation (for example "tag MPI_ANY_TAG (MPI 4.1 3.10)"); the scan regex sees those tokens
+# as calls even though a constant is never an entry point.
+MPI_ANY_TAG
+
+# MPI 4.1 additions in the existing environment/buffer categories. These are
+# behavior-tested (including the request lifecycle) but are not call-count gate
+# targets; the three MPI_Request_get_status_* queries are wrapped in
+# mpi_wrap_symbols.hpp.
+MPI_Get_hw_resource_info
+MPI_Buffer_flush
+MPI_Buffer_iflush
+MPI_Comm_attach_buffer_c
+MPI_Comm_detach_buffer_c
+MPI_Comm_flush_buffer
+MPI_Comm_iflush_buffer
+
+# Persistent collective initialization (MPI 4.0 section 6.13 / 8.8). An init is a
+# per-request setup call, not a per-operation gate: the counted lifecycle calls are
+# MPI_Start/MPI_Startall, MPI_Wait*/MPI_Test* and MPI_Request_free, which are all
+# already wrapped in mpi_wrap_symbols.hpp.
+MPI_Barrier_init
+MPI_Bcast_init_c
+MPI_Gather_init_c
+MPI_Gatherv_init_c
+MPI_Scatter_init_c
+MPI_Scatterv_init_c
+MPI_Allgather_init_c
+MPI_Allgatherv_init_c
+MPI_Alltoall_init_c
+MPI_Alltoallv_init_c
+MPI_Reduce_init_c
+MPI_Allreduce_init_c
+MPI_Reduce_scatter_init_c
+MPI_Reduce_scatter_block_init_c
+MPI_Scan_init_c
+MPI_Exscan_init_c

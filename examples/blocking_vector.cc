@@ -1,8 +1,7 @@
-#include "mplr/mplr.hpp"
-
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <mp1/mp1.hpp>
 #include <numeric>
 #include <vector>
 
@@ -19,43 +18,46 @@ void print_range(const char* const str, I i_1, I i_2) {
 
 
 int main() {
-  mplr::init();
-  const auto comm_world{mplr::comm_world()};
+  mp1::environment env;
+  const auto comm_world{mp1::comm_world()};
   // run the program with two or more processes
   if (comm_world.size() < 2)
     return EXIT_FAILURE;
   const int n{12};
-  std::vector<int> v(n);              // vector of n elements lying contiguously in memory
-  mplr::contiguous_layout<int> l(n);  // corresponding memory layout
+  std::vector<int> v(n);  // vector of n elements lying contiguously in memory
+  const auto l{mp1::layout<int>::contiguous(n)};  // corresponding memory layout
   // process 0 sends
   if (comm_world.rank() == 0) {
     // see MPI Standard for the semantics of standard send, buffered send,
     // synchronous send and ready sendG
     std::iota(v.begin(), v.end(), 0);  // fill vector with some data
     auto add_one{[](int x) { return x + 1; }};
-    comm_world.send(v.data(), l, 1);  // send vector to rank 1 via standard send
+    mp1::send(comm_world, mp1::region{v.data(), l},
+              1);  // send vector to rank 1 via standard send
     std::transform(v.begin(), v.end(), v.begin(), add_one);  // update data
     {
       // create a buffer for buffered send,
       // memory will be freed on leaving the scope
-      const int size{comm_world.bsend_size(l)};
-      mplr::bsend_buffer buff{size};
-      comm_world.bsend(v.data(), l, 1);  // send x to rank 1 via buffered send
+      const int size{static_cast<int>(l.byte_size())};
+      mp1::bsend_buffer buff{size};
+      mp1::bsend(comm_world, mp1::region{v.data(), l},
+                 1);  // send x to rank 1 via buffered send
     }
     std::transform(v.begin(), v.end(), v.begin(), add_one);  // update data
-    comm_world.ssend(v.data(), l, 1);  // send x to rank 1 via synchronous send
+    mp1::ssend(comm_world, mp1::region{v.data(), l},
+               1);  // send x to rank 1 via synchronous send
     std::transform(v.begin(), v.end(), v.begin(), add_one);  // update data
-    comm_world.rsend(v.data(), l, 1);                        // send x to rank 1 via ready send
+    mp1::rsend(comm_world, mp1::region{v.data(), l}, 1);     // send x to rank 1 via ready send
   }
   // process 1 receives
   if (comm_world.rank() == 1) {
-    comm_world.recv(v.data(), l, 0);  // receive vector from rank 0
+    mp1::recv(comm_world, mp1::region{v.data(), l}, 0);  // receive vector from rank 0
     print_range("v = ", v.begin(), v.end());
-    comm_world.recv(v.data(), l, 0);  // receive vector from rank 0
+    mp1::recv(comm_world, mp1::region{v.data(), l}, 0);  // receive vector from rank 0
     print_range("v = ", v.begin(), v.end());
-    comm_world.recv(v.data(), l, 0);  // receive vector from rank 0
+    mp1::recv(comm_world, mp1::region{v.data(), l}, 0);  // receive vector from rank 0
     print_range("v = ", v.begin(), v.end());
-    comm_world.recv(v.data(), l, 0);  // receive vector from rank 0
+    mp1::recv(comm_world, mp1::region{v.data(), l}, 0);  // receive vector from rank 0
     print_range("v = ", v.begin(), v.end());
   }
   return EXIT_SUCCESS;

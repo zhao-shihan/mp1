@@ -39,6 +39,7 @@ static inline double u_0(double x) {
 
 // initial velocity
 static inline double u_0_dt(double x) {
+  (void)x;
   return 0.0;
 }
 

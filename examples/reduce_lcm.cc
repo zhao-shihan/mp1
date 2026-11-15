@@ -1,10 +1,10 @@
-#include "mplr/mplr.hpp"
-
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
+#include <mp1/mp1.hpp>
 #include <random>
+#include <span>
 #include <vector>
 
 
@@ -12,7 +12,7 @@
 template<typename T>
 class lcm {
   // helper: calculate greatest common divisor
-  T gcd(T a, T b) {
+  [[nodiscard]] T gcd(T a, T b) const {
     constexpr T zero{};
     if (a < zero)
       a = -a;
@@ -27,7 +27,7 @@ class lcm {
   }
 
 public:
-  T operator()(T a, T b) {
+  T operator()(T a, T b) const noexcept {
     constexpr T zero{};
     const T t{(a / gcd(a, b)) * b};
     if (t < zero)
@@ -38,8 +38,8 @@ public:
 
 
 int main() {
-  mplr::init();
-  const auto comm_world{mplr::comm_world()};
+  mp1::environment env;
+  const auto comm_world{mp1::comm_world()};
   // generate data
   std::mt19937_64 g(std::time(nullptr) * comm_world.rank());  // random seed
   std::uniform_int_distribution uniform{1, 12};
@@ -48,16 +48,16 @@ int main() {
   std::vector<int> v(n);
   std::generate(v.begin(), v.end(), [&g, &uniform]() { return uniform(g); });
   // calculate the least common multiple and send result to rank 0
-  mplr::contiguous_layout<int> layout(n);
+  const auto l{mp1::layout<int>::contiguous(n)};
   if (comm_world.rank() == 0) {
     std::vector<int> result(n);
     // calculate the least common multiple
-    comm_world.reduce(lcm<int>(), 0, v.data(), result.data(), layout);
+    mp1::reduce(comm_world, lcm<int>{}, 0, v, result);
     // to check the result display data from all ranks
     std::cout << "Arguments:\n";
     for (int r{0}; r < comm_world.size(); ++r) {
       if (r > 0)
-        comm_world.recv(v.data(), layout, r);
+        mp1::recv(comm_world, mp1::region{v.data(), l}, r);
       for (auto i : v)
         std::cout << i << '\t';
       std::cout << '\n';
@@ -69,9 +69,9 @@ int main() {
     std::cout << '\n';
   } else {
     // calculate the least common multiple
-    comm_world.reduce(lcm<int>(), 0, v.data(), layout);
+    mp1::reduce(comm_world, lcm<int>{}, 0, v, std::span<int>{});
     // send data to rank 0 for display
-    comm_world.send(v.data(), layout, 0);
+    mp1::send(comm_world, mp1::region{v.data(), l}, 0);
   }
   return EXIT_SUCCESS;
 }

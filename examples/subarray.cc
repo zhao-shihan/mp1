@@ -1,13 +1,12 @@
-#include "mplr/mplr.hpp"
-
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <mp1/mp1.hpp>
 
 
 int main() {
-  mplr::init();
-  const auto comm_world{mplr::comm_world()};
+  mp1::environment env;
+  const auto comm_world{mp1::comm_world()};
   // run the program with two or more processes
   if (comm_world.size() < 2)
     return EXIT_FAILURE;
@@ -22,17 +21,18 @@ int main() {
     for (int i_1{0}; i_1 < n_1; ++i_1)
       for (int i_0{0}; i_0 < n_0; ++i_0)
         a[i_1][i_0] = i_0 + 0.01 * i_1;
-    mplr::subarray_layout<double> subarray{{
-        {n_1, s_1, 2},  // 2nd dimension: size of array, size of subarray, start of subarray
-        {n_0, s_0, 4}   // 1st dimension: size of array, size of subarray, start of subarray
-    }};
-    comm_world.send(&a[0][0], subarray, 1);
+    mp1::subarray_parameter parameter;
+    // 2nd dimension then 1st dimension: size of array, size of subarray, start of subarray
+    parameter.add(n_1, s_1, 2);
+    parameter.add(n_0, s_0, 4);
+    const auto subarray{mp1::layout<double>::subarray(parameter)};
+    mp1::send(comm_world, mp1::region{&a[0][0], subarray}, 1);
   }
   // process 1 receives
   if (comm_world.rank() == 1) {
     double a[s_1][s_0];
-    mplr::contiguous_layout<double> array{s_0 * s_1};
-    comm_world.recv(&a[0][0], array, 0);
+    const auto array{mp1::layout<double>::contiguous(s_0 * s_1)};
+    mp1::recv(comm_world, mp1::region{&a[0][0], array}, 0);
     for (int i_1{0}; i_1 < s_1; ++i_1) {
       for (int i_0{0}; i_0 < s_0; ++i_0)
         std::cout << std::fixed << std::setprecision(2) << a[i_1][i_0] << "  ";

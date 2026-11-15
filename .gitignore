@@ -8,6 +8,7 @@
 **/*.bin
 **/*.dll
 **/*.dylib
+**/*.err
 **/*.exe
 **/*.lib
 **/*.log

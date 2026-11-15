@@ -1,37 +1,36 @@
-#include "mplr/mplr.hpp"
-
 #include <cstdlib>
 #include <iostream>
+#include <mp1/mp1.hpp>
+#include <numeric>
+#include <span>
 #include <vector>
 
 
 int main() {
-  mplr::init();
-  const auto comm_world{mplr::comm_world()};
+  mp1::environment env;
+  const auto comm_world{mp1::comm_world()};
   const auto c_rank{comm_world.rank()};
   const auto c_size{comm_world.size()};
   // fill vector with C_rank+1 elements, each having the value C_rank+1
   std::vector<int> x(c_rank + 1, c_rank + 1);
-  mplr::contiguous_layout<int> l(c_rank + 1);
+  const auto l{mp1::layout<int>::contiguous(c_rank + 1)};
   // root rank will send and receive in gather operation
   if (c_rank == 0) {
-    // messages of varying size will be received
-    // need to specify appropriate memory layouts to define how many elements
-    // will be received and where to store them
-    mplr::layouts<int> ls;
+    // messages of varying size will be received; each rank contributes i + 1
+    // elements, placed contiguously in the receive buffer
+    std::vector<mp1::count_t> counts(static_cast<std::size_t>(c_size));
     for (int i{0}; i < c_size; ++i)
-      // define layout for message to be received from rank i
-      ls.push_back(mplr::indexed_layout<int>({{
-          i + 1,           // number of int elements
-          (i * i + i) / 2  // position of the first element in receive buffer
-      }}));
+      counts[static_cast<std::size_t>(i)] = i + 1;
+    std::vector<mp1::count_t> displacements(static_cast<std::size_t>(c_size), 0);
+    std::partial_sum(counts.begin(), counts.end() - 1, displacements.begin() + 1);
     std::vector<int> y((c_size * c_size + c_size) / 2);  // receive buffer
-    comm_world.gatherv(0, x.data(), l, y.data(), ls);    // receive data
+    mp1::gatherv(comm_world, 0, mp1::region{x.data(), l}, y,
+                 mp1::blocks{.counts = counts, .displacements = displacements});
     // print data
     for (const auto& f : y)
       std::cout << f << '\n';
   } else
     // non-root ranks just send
-    comm_world.gatherv(0, x.data(), l);
+    mp1::gatherv(comm_world, 0, mp1::region{x.data(), l}, std::span<int>{}, mp1::blocks{});
   return EXIT_SUCCESS;
 }

@@ -1,8 +1,10 @@
-#include "mplr/mplr.hpp"
-
 #include <cstdlib>
+#include <functional>
 #include <iostream>
+#include <mp1/mp1.hpp>
 #include <numeric>
+#include <span>
+#include <vector>
 
 
 struct my_array {
@@ -19,12 +21,12 @@ struct my_array {
 };
 
 
-// use reflection macro to make the struct compatible with mplr
-MPLR_REFLECTION(my_array, data)
+// use reflection macro to make the struct compatible with mp1
+MP1_REFLECTION(my_array, data)
 
 
 // overload plus operator
-my_array operator+(const my_array& a, const my_array& b) {
+my_array operator+(const my_array& a, const my_array& b) noexcept {
   my_array res;
   for (int i_1{0}; i_1 < my_array::n_1; ++i_1)
     for (int i_0{0}; i_0 < my_array::n_0; ++i_0)
@@ -34,53 +36,53 @@ my_array operator+(const my_array& a, const my_array& b) {
 
 
 int main() {
-  mplr::init();
-  const auto comm_world{mplr::comm_world()};
+  mp1::environment env;
+  const auto comm_world{mp1::comm_world()};
   int root{0};
 
   // synchronize processes via barrier
-  comm_world.barrier();
-  std::cout << mplr::processor_name() << " has passed barrier\n";
-  comm_world.barrier();
+  mp1::barrier(comm_world);
+  std::cout << mp1::processor_name() << " has passed barrier\n";
+  mp1::barrier(comm_world);
   double x{0};
   if (comm_world.rank() == root)
     x = 10;
 
   // broadcast x to all from root rank
-  comm_world.bcast(root, x);
+  mp1::bcast(comm_world, root, x);
   std::cout << "x = " << x << '\n';
 
   // collect data from all ranks via gather to root rank
   x = comm_world.rank() + 1;
   if (comm_world.rank() == root) {
     std::vector<double> v(comm_world.size());  // receive buffer
-    comm_world.gather(root, x, v.data());
+    mp1::gather(comm_world, root, x, v);
     std::cout << "v = ";
     for (const auto& item : v)
       std::cout << item << ' ';
     std::cout << '\n';
   } else
-    comm_world.gather(root, x);
+    mp1::gather(comm_world, root, x, std::span<double>{});
 
   // send data to all ranks via scatter from root rank
   double y{0};
   if (comm_world.rank() == root) {
     std::vector<double> v(comm_world.size());  // send buffer
     std::iota(v.begin(), v.end(), 1);          // populate send buffer
-    comm_world.scatter(root, v.data(), y);
+    mp1::scatter(comm_world, root, std::span<const double>{v}, y);
   } else
-    comm_world.scatter(root, y);
+    mp1::scatter(comm_world, root, std::span<const double>{}, y);
   std::cout << "y = " << y << '\n';
 
   // reduce/sum all values of x on all nodes and send global result to root
   if (comm_world.rank() == root) {
-    comm_world.reduce(mplr::plus<double>(), root, x, y);
+    mp1::reduce(comm_world, std::plus<double>{}, root, x, y);
     std::cout << "sum after reduce " << y << '\n';
   } else
-    comm_world.reduce(mplr::plus<double>(), root, x);
+    mp1::reduce(comm_world, std::plus<double>{}, root, x, std::span<double>{});
 
   // reduce/multiply all values of x on all nodes and send global result to all
-  comm_world.allreduce(mplr::multiplies<double>(), x, y);
+  mp1::allreduce(comm_world, std::multiplies<double>{}, x, y);
   std::cout << "sum after allreduce " << y << '\n';
 
   // reduce a C-style array using a contiguous layout
@@ -91,8 +93,9 @@ int main() {
     for (int i_1{0}; i_1 < n_1; ++i_1)
       for (int i_0{0}; i_0 < n_0; ++i_0)
         array[i_0][i_1] = i_0 + 100 * i_1;
-    mplr::contiguous_layout<double> l(n_1 * n_0);
-    comm_world.allreduce(mplr::plus<double>(), &array[0][0], l);
+    const auto l{mp1::layout<double>::contiguous(n_1 * n_0)};
+    mp1::allreduce(comm_world, std::plus<double>{}, mp1::in_place,
+                   mp1::region<double>{&array[0][0], l});
     if (comm_world.rank() == 0) {
       std::cout << "array after allreduce\n";
       for (int i_1{0}; i_1 < n_1; ++i_1) {
@@ -109,7 +112,7 @@ int main() {
     for (int i_1{0}; i_1 < my_array::n_1; ++i_1)
       for (int i_0{0}; i_0 < my_array::n_0; ++i_0)
         array(i_0, i_1) = i_0 + 100 * i_1;
-    comm_world.allreduce(mplr::plus<my_array>(), array);
+    mp1::allreduce(comm_world, std::plus<my_array>{}, mp1::in_place, array);
     if (comm_world.rank() == 0) {
       std::cout << "array after allreduce\n";
       for (int i_1{0}; i_1 < my_array::n_1; ++i_1) {

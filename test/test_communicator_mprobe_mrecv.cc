@@ -1,62 +1,74 @@
-#define BOOST_TEST_MODULE communicator_mprobe_mrecv
+// Matched probe/receive tests: mprobe/improbe return the message handle plus status, and
+// mrecv/imrecv consume it through the scalar, pointer and iterator forms.
 
-#include "boost/test/included/unit_test.hpp"
-#include "mplr/mplr.hpp"
+#include "mp1/mp1.hpp"
 #include "test_helper.hpp"
 
+#include <array>
+#include <boost/test/unit_test.hpp>
 #include <complex>
 #include <cstddef>
 #include <limits>
 #include <list>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 
-template<typename T>
-bool mprobe_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
-  if (comm_world.size() < 2)
-    return false;
-  if (comm_world.rank() == 0)
-    comm_world.send(data, 1);
-  if (comm_world.rank() == 1) {
-    auto [m, s]{comm_world.mprobe(0)};
-    if (s.source() != 0)
-      return false;
-    if constexpr (has_size<T>::value) {
-      if (s.get_count<typename T::value_type>() != static_cast<int>(data.size()))
-        return false;
-    } else {
-      if (s.get_count<T>() != 1)
-        return false;
-      T data_r;
-      comm_world.mrecv(data_r, m);
-      return data_r == data;
+namespace {
+
+  template<typename T>
+  void send_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    mp1::send(comm, data, dest);
+  }
+
+  // mrecv: 1 value / 2 fixed array / 4 auto-size.
+  template<typename T>
+  mp1::status mrecv_value(T& data_r, mp1::message& message) {
+    return mp1::mrecv(data_r, message);
+  }
+
+  // imrecv has no auto-size policy (4): a resizable container uses the bounded policy with
+  // the probed count as the bound.
+  template<typename T>
+  mp1::request imrecv_value(T& data_r, mp1::message& message, mp1::count_t count) {
+    if constexpr (mp1::resizable_element_buffer<T>)
+      return mp1::imrecv(data_r, mp1::capacity{count}, message);
+    else {
+      (void)count;
+      return mp1::imrecv(data_r, message);
     }
   }
-  return true;
-}
+
+}  // namespace
 
 
 template<typename T>
-bool mprobe_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+bool mprobe_test(const T& data) {
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0)
-    comm_world.send(data, 1);
+    send_value(comm_world, data, 1);
   if (comm_world.rank() == 1) {
-    auto [m, s]{comm_world.mprobe(0)};
-    if (s.source() != 0)
+    auto probed{mp1::mprobe(comm_world, 0)};
+    if (probed.probed_status().source() != 0)
       return false;
-    int count{s.get_count<typename T::value_type>()};
-    if (count != static_cast<int>(data.size()))
-      return false;
-    T data_r;
-    if constexpr (has_resize<T>())
-      data_r.resize(count);
-    comm_world.mrecv(std::begin(data_r), std::end(data_r), m);
+    if constexpr (has_size<T>::value) {
+      if (probed.probed_status().get_count<typename T::value_type>() !=
+          static_cast<mp1::count_t>(data.size()))
+        return false;
+    } else {
+      if (probed.probed_status().get_count<T>() != 1)
+        return false;
+    }
+    T data_r{};
+    if constexpr (has_size<T>::value) {
+      if constexpr (has_resize<T>())
+        data_r.resize(data.size());
+    }
+    mrecv_value(data_r, probed);
     return data_r == data;
   }
   return true;
@@ -64,29 +76,58 @@ bool mprobe_iter_test(const T& data) {
 
 
 template<typename T>
-bool improbe_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+bool mprobe_iter_test(const T& data) {
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0)
-    comm_world.send(data, 1);
+    send_value(comm_world, data, 1);
+  if (comm_world.rank() == 1) {
+    auto probed{mp1::mprobe(comm_world, 0)};
+    if (probed.probed_status().source() != 0)
+      return false;
+    const mp1::count_t count{probed.probed_status().get_count<typename T::value_type>()};
+    if (count != static_cast<mp1::count_t>(data.size()))
+      return false;
+    std::vector<typename T::value_type> data_r(static_cast<std::size_t>(count));
+    (void)mp1::mrecv(std::span(data_r), probed);
+    return std::equal(data_r.begin(), data_r.end(), data.begin(), data.end());
+  }
+  return true;
+}
+
+
+template<typename T>
+bool improbe_test(const T& data) {
+  const auto comm_world = mp1::comm_world();
+  if (comm_world.size() < 2)
+    return false;
+  if (comm_world.rank() == 0)
+    send_value(comm_world, data, 1);
   if (comm_world.rank() == 1) {
     while (true) {
-      auto res{comm_world.improbe(0)};
+      auto res{mp1::improbe(comm_world, 0)};
       if (res) {
-        auto [m, s]{res.value()};
-        if (s.source() != 0)
+        auto probed{std::move(res).value()};
+        if (probed.probed_status().source() != 0)
           return false;
         if constexpr (has_size<T>::value) {
-          if (s.get_count<typename T::value_type>() != static_cast<int>(data.size()))
+          if (probed.probed_status().get_count<typename T::value_type>() !=
+              static_cast<mp1::count_t>(data.size()))
             return false;
         } else {
-          if (s.get_count<T>() != 1)
+          if (probed.probed_status().get_count<T>() != 1)
             return false;
         }
-        T data_r;
-        mplr::irequest request{comm_world.imrecv(data_r, m)};
-        request.wait(mplr::duty_ratio::preset::moderate);
+        T data_r{};
+        mp1::count_t probed_count{1};
+        if constexpr (has_size<T>::value) {
+          probed_count = static_cast<mp1::count_t>(data.size());
+          if constexpr (has_resize<T>())
+            data_r.resize(data.size());
+        }
+        auto request{imrecv_value(data_r, probed, probed_count)};
+        request.wait();
         return data_r == data;
       }
     }
@@ -97,27 +138,25 @@ bool improbe_test(const T& data) {
 
 template<typename T>
 bool improbe_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0)
-    comm_world.send(data, 1);
+    send_value(comm_world, data, 1);
   if (comm_world.rank() == 1) {
     while (true) {
-      auto res{comm_world.improbe(0)};
+      auto res{mp1::improbe(comm_world, 0)};
       if (res) {
-        auto [m, s]{res.value()};
-        if (s.source() != 0)
+        auto probed{std::move(res).value()};
+        if (probed.probed_status().source() != 0)
           return false;
-        int count{s.get_count<typename T::value_type>()};
-        if (count != static_cast<int>(data.size()))
+        const mp1::count_t count{probed.probed_status().get_count<typename T::value_type>()};
+        if (count != static_cast<mp1::count_t>(data.size()))
           return false;
-        T data_r;
-        if constexpr (has_resize<T>())
-          data_r.resize(count);
-        mplr::irequest request{comm_world.imrecv(std::begin(data_r), std::end(data_r), m)};
-        request.wait(mplr::duty_ratio{0.03});
-        return data_r == data;
+        std::vector<typename T::value_type> data_r(static_cast<std::size_t>(count));
+        auto request{mp1::imrecv(std::span(data_r), probed)};
+        request.wait();
+        return std::equal(data_r.begin(), data_r.end(), data.begin(), data.end());
       }
     }
   }
@@ -126,8 +165,8 @@ bool improbe_iter_test(const T& data) {
 
 
 BOOST_AUTO_TEST_CASE(mprobe) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // integer types
   BOOST_TEST(mprobe_test(std::byte(77)));
@@ -170,8 +209,8 @@ BOOST_AUTO_TEST_CASE(mprobe) {
 
 
 BOOST_AUTO_TEST_CASE(improbe) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // integer types
   BOOST_TEST(improbe_test(std::byte(77)));

@@ -1,10 +1,12 @@
-#define BOOST_TEST_MODULE communicator_send_recv
+// Point-to-point send/recv tests: every supported scalar and container form for the
+// standard, buffered, synchronous and ready modes, plus iterator-range forms.
 
-#include "boost/test/included/unit_test.hpp"
-#include "mplr/mplr.hpp"
+#include "mp1/mp1.hpp"
 #include "test_helper.hpp"
 
 #include <algorithm>
+#include <array>
+#include <boost/test/unit_test.hpp>
 #include <complex>
 #include <cstddef>
 #include <limits>
@@ -17,63 +19,74 @@
 #include <vector>
 
 
-#if __cplusplus >= 202002L
-#include <span>
+namespace {
 
-template<typename T>
-struct is_span : public std::false_type {};
+  template<typename T>
+  void send_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    mp1::send(comm, data, dest);
+  }
 
-template<typename T, std::size_t N>
-struct is_span<std::span<T, N>> : public std::true_type {};
+  template<typename T>
+  void bsend_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    mp1::bsend(comm, data, dest);
+  }
 
-template<typename T>
-inline constexpr bool is_span_v = is_span<T>::value;
+  template<typename T>
+  void ssend_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    mp1::ssend(comm, data, dest);
+  }
 
-template<typename T>
-struct span_size;
+  template<typename T>
+  void rsend_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    mp1::rsend(comm, data, dest);
+  }
 
-template<typename T, std::size_t N>
-struct span_size<std::span<T, N>> {
-  static constexpr std::size_t value = N;
-};
-#endif
+  // Receive into a value: the scalar/value policy, the fixed policy for a std::array, and the
+  // auto-size policy for a resizable contiguous container.  A non-contiguous sequence is
+  // send-only, so its receive target is a vector built from the same elements.
+  template<typename T>
+  T recv_value(const mp1::mpi_communicator& comm) {
+    if constexpr (mp1::recv_sink<T&>) {
+      T data_r;
+      (void)mp1::recv(comm, data_r, 0);
+      return data_r;
+    } else {
+      std::vector<typename T::value_type> data_r;
+      (void)mp1::recv(comm, data_r, 0);
+      return T(data_r.begin(), data_r.end());
+    }
+  }
+
+  template<typename T>
+  int bsend_buffer_size(const T& data) {
+    return payload_size_bytes(data);
+  }
+
+}  // namespace
 
 
 bool send_recv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0)
-    comm_world.send(1);
+    mp1::send(comm_world, std::span<int>{}, 1);
   if (comm_world.rank() == 1)
-    comm_world.recv(0);
+    (void)mp1::recv(comm_world, std::span<int>{}, 0);
   return true;
 }
 
 
 template<typename T>
 bool send_recv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0)
-    comm_world.send(data, 1);
+    send_value(comm_world, data, 1);
   if (comm_world.rank() == 1) {
-#if __cplusplus >= 202002L
-    if constexpr (is_span_v<T>) {
-      using element_type = typename T::element_type;
-      constexpr auto size = span_size<T>::value;
-      std::array<element_type, size> array;
-      std::span data_r(array);
-      comm_world.recv(data_r, 0);
-      return std::equal(data.begin(), data.end(), data_r.begin(), data_r.end());
-    } else
-#endif
-    {
-      T data_r;
-      comm_world.recv(data_r, 0);
-      return data_r == data;
-    }
+    const T data_r = recv_value<T>(comm_world);
+    return data_r == data;
   }
   return true;
 }
@@ -81,72 +94,50 @@ bool send_recv_test(const T& data) {
 
 template<typename T>
 bool send_recv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
-  if (comm_world.rank() == 0)
-    comm_world.send(std::begin(data), std::end(data), 1);
+  if (comm_world.rank() == 0) {
+    if constexpr (std::ranges::contiguous_range<T>)
+      mp1::send(comm_world, std::ranges::subrange{std::begin(data), std::end(data)}, 1);
+    else
+      mp1::send(comm_world, data, 1);  // non-contiguous: the container range is staged
+  }
   if (comm_world.rank() == 1) {
-    T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      comm_world.recv(data_r, 0);
-      return data_r == data;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      comm_world.recv(std::begin(data_r), std::end(data_r), 0);
-      return data_r == data;
-    }
+    std::vector<typename T::value_type> data_r(data.size());
+    (void)mp1::recv(comm_world, std::span(data_r), 0);
+    return std::equal(data_r.begin(), data_r.end(), data.begin(), data.end());
   }
   return true;
 }
 
 
 bool bsend_recv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    mplr::bsend_buffer buff(mplr::bsend_overhead);
-    comm_world.bsend(1);
+    mp1::bsend_buffer buff(mp1::bsend_overhead);
+    mp1::bsend(comm_world, std::span<int>{}, 1);
   }
-  if (comm_world.rank() == 1) {
-    comm_world.recv(0);
-  }
+  if (comm_world.rank() == 1)
+    (void)mp1::recv(comm_world, std::span<int>{}, 0);
   return true;
 }
 
 
 template<typename T>
 bool bsend_recv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    int size;
-    if constexpr (has_size<T>::value)
-      size = comm_world.bsend_size<typename T::value_type>(data.size());
-    else
-      size = comm_world.bsend_size<T>();
-    mplr::bsend_buffer buff(size);
-    comm_world.bsend(data, 1);
+    mp1::bsend_buffer buff(bsend_buffer_size(data));
+    bsend_value(comm_world, data, 1);
   }
   if (comm_world.rank() == 1) {
-#if __cplusplus >= 202002L
-    if constexpr (is_span_v<T>) {
-      using element_type = typename T::element_type;
-      constexpr auto size = span_size<T>::value;
-      std::array<element_type, size> array;
-      std::span data_r(array);
-      comm_world.recv(data_r, 0);
-      return std::equal(data.begin(), data.end(), data_r.begin(), data_r.end());
-    } else
-#endif
-    {
-      T data_r;
-      comm_world.recv(data_r, 0);
-      return data_r == data;
-    }
+    const T data_r = recv_value<T>(comm_world);
+    return data_r == data;
   }
   return true;
 }
@@ -154,70 +145,47 @@ bool bsend_recv_test(const T& data) {
 
 template<typename T>
 bool bsend_recv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    int size;
-    if constexpr (has_size<T>::value)
-      size = comm_world.bsend_size<typename T::value_type>(data.size());
+    mp1::bsend_buffer buff(bsend_buffer_size(data));
+    if constexpr (std::ranges::contiguous_range<T>)
+      mp1::bsend(comm_world, std::ranges::subrange{std::begin(data), std::end(data)}, 1);
     else
-      size = comm_world.bsend_size<T>();
-    mplr::bsend_buffer buff(size);
-    comm_world.bsend(std::begin(data), std::end(data), 1);
+      mp1::bsend(comm_world, data, 1);
   }
   if (comm_world.rank() == 1) {
-    T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      T data_r;
-      comm_world.recv(data_r, 0);
-      return data_r == data;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      comm_world.recv(std::begin(data_r), std::end(data_r), 0);
-      return data_r == data;
-    }
+    std::vector<typename T::value_type> data_r(data.size());
+    (void)mp1::recv(comm_world, std::span(data_r), 0);
+    return std::equal(data_r.begin(), data_r.end(), data.begin(), data.end());
   }
   return true;
 }
 
 
 bool ssend_recv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0)
-    comm_world.ssend(1);
+    mp1::ssend(comm_world, std::span<int>{}, 1);
   if (comm_world.rank() == 1)
-    comm_world.recv(0);
+    (void)mp1::recv(comm_world, std::span<int>{}, 0);
   return true;
 }
 
 
 template<typename T>
 bool ssend_recv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0)
-    comm_world.ssend(data, 1);
+    ssend_value(comm_world, data, 1);
   if (comm_world.rank() == 1) {
-#if __cplusplus >= 202002L
-    if constexpr (is_span_v<T>) {
-      using element_type = typename T::element_type;
-      constexpr auto size = span_size<T>::value;
-      std::array<element_type, size> array;
-      std::span data_r(array);
-      comm_world.recv(data_r, 0);
-      return std::equal(data.begin(), data.end(), data_r.begin(), data_r.end());
-    } else
-#endif
-    {
-      T data_r;
-      comm_world.recv(data_r, 0);
-      return data_r == data;
-    }
+    const T data_r = recv_value<T>(comm_world);
+    return data_r == data;
   }
   return true;
 }
@@ -225,144 +193,93 @@ bool ssend_recv_test(const T& data) {
 
 template<typename T>
 bool ssend_recv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
-  if (comm_world.rank() == 0)
-    comm_world.ssend(std::begin(data), std::end(data), 1);
+  if (comm_world.rank() == 0) {
+    if constexpr (std::ranges::contiguous_range<T>)
+      mp1::ssend(comm_world, std::ranges::subrange{std::begin(data), std::end(data)}, 1);
+    else
+      mp1::ssend(comm_world, data, 1);
+  }
   if (comm_world.rank() == 1) {
-    T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      comm_world.recv(data_r, 0);
-      return data_r == data;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      comm_world.recv(std::begin(data_r), std::end(data_r), 0);
-      return data_r == data;
-    }
+    std::vector<typename T::value_type> data_r(data.size());
+    (void)mp1::recv(comm_world, std::span(data_r), 0);
+    return std::equal(data_r.begin(), data_r.end(), data.begin(), data.end());
   }
   return true;
 }
 
 
 bool rsend_recv_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    comm_world.barrier();
-    comm_world.rsend(1);
+    mp1::barrier(comm_world);
+    mp1::rsend(comm_world, std::span<int>{}, 1);
   } else if (comm_world.rank() == 1) {
-    mplr::irequest r{comm_world.irecv(0)};
-    comm_world.barrier();
+    auto r = mp1::irecv(comm_world, std::span<int>{}, 0);
+    mp1::barrier(comm_world);
     r.wait();
   } else
-    comm_world.barrier();
+    mp1::barrier(comm_world);
   return true;
 }
 
 
 template<typename T>
 bool rsend_recv_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    comm_world.barrier();
-    comm_world.rsend(data, 1);
+    mp1::barrier(comm_world);
+    rsend_value(comm_world, data, 1);
   } else if (comm_world.rank() == 1) {
-    // must ensure that MPI_Recv is called before mplr::communicator::rsend
-    if constexpr (has_begin_end<T>() and has_size<T>() and has_resize<T>()) {
-      // T is an STL container
+    // The receive must be posted before the ready send enters MPI.
+    if constexpr (has_begin_end<T>() and has_size<T>()) {
+      std::vector<typename T::value_type> data_r(data.size());
+      auto r = mp1::irecv(comm_world, std::span(data_r), 0);
+      mp1::barrier(comm_world);
+      r.wait();
+      return std::equal(std::begin(data_r), std::end(data_r), std::begin(data));
+    } else {
       T data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
+      auto r = mp1::irecv(comm_world, data_r, 0);
+      mp1::barrier(comm_world);
       r.wait();
       return data_r == data;
-    } else if constexpr (has_begin_end<T>() and has_size<T>()) {
-      // T is an STL container without resize member, e.g., std::set
-      std::vector<typename T::value_type> data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
-      r.wait();
-      return std::equal(begin(data_r), end(data_r), begin(data));
-    } else {
-      // T is some fundamental type
-      // mplr::communicator::irecv does not suffice in the cases above as the irecv performs a
-      // probe first to receive STL containers
-#if __cplusplus >= 202002L
-      if constexpr (is_span_v<T>) {
-        using element_type = typename T::element_type;
-        constexpr auto size = span_size<T>::value;
-        std::array<element_type, size> array;
-        std::span data_r(array);
-        mplr::irequest r{comm_world.irecv(data_r, 0)};
-        comm_world.barrier();
-        r.wait();
-        return std::equal(data.begin(), data.end(), data_r.begin(), data_r.end());
-      } else
-#endif
-      {
-        T data_r;
-        mplr::irequest r{comm_world.irecv(data_r, 0)};
-        comm_world.barrier();
-        r.wait();
-        return data_r == data;
-      }
     }
   } else
-    comm_world.barrier();
+    mp1::barrier(comm_world);
   return true;
 }
 
 
 template<typename T>
 bool rsend_recv_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    comm_world.barrier();
-    comm_world.rsend(std::begin(data), std::end(data), 1);
+    mp1::barrier(comm_world);
+    mp1::rsend(comm_world, data, 1);
   } else if (comm_world.rank() == 1) {
-    // must ensure that MPI_Recv is called before mplr::communicator::rsend
-    if constexpr (has_begin_end<T>() and has_size<T>() and has_resize<T>()) {
-      T data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
-      r.wait();
-      return data_r == data;
-    } else if constexpr (has_begin_end<T>() and has_size<T>()) {
-      // T is an STL container without resize member, e.g., std::set
-      std::vector<typename T::value_type> data_r;
-      data_r.resize(data.size());
-      mplr::irequest r{comm_world.irecv(begin(data_r), end(data_r), 0)};
-      comm_world.barrier();
-      r.wait();
-      return std::equal(begin(data_r), end(data_r), begin(data));
-    } else {
-      // T is some fundamental type
-      // mplr::communicator::irecv does not suffice in the cases above as the irecv performs a
-      // probe first to receive STL containers
-      T data_r;
-      mplr::irequest r{comm_world.irecv(data_r, 0)};
-      comm_world.barrier();
-      r.wait();
-      return data_r == data;
-    }
+    std::vector<typename T::value_type> data_r(data.size());
+    auto r = mp1::irecv(comm_world, std::span(data_r), 0);
+    mp1::barrier(comm_world);
+    r.wait();
+    return std::equal(std::begin(data_r), std::end(data_r), std::begin(data));
   } else
-    comm_world.barrier();
+    mp1::barrier(comm_world);
   return true;
 }
 
 
 BOOST_AUTO_TEST_CASE(send_recv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(send_recv_test());
@@ -399,34 +316,27 @@ BOOST_AUTO_TEST_CASE(send_recv) {
   BOOST_TEST(send_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(send_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(send_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // MPLR_REFLECTION_TEMPLATE types
+  // MP1_REFLECTION_TEMPLATE types
   BOOST_TEST(send_recv_test(wrapper<int>{42}));
   BOOST_TEST(send_recv_test(wrapper<double>{3.14}));
   BOOST_TEST(send_recv_test(pair_like<int, double>{1, 2.3}));
-#if __cplusplus >= 202002L
-  {
-    int array[]{1, 2, 3, 4, 5};
-    std::span span{array};
-    BOOST_TEST(send_recv_test(span));
-  }
-#endif
   // strings and STL containers
   BOOST_TEST(send_recv_test(std::string{"Hello World"}));
   BOOST_TEST(send_recv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(send_recv_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(send_recv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(send_recv_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
   // iterators
   BOOST_TEST(send_recv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(send_recv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(send_recv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(send_recv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
 }
 
 
 BOOST_AUTO_TEST_CASE(bsend_recv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(bsend_recv_test());
@@ -463,34 +373,27 @@ BOOST_AUTO_TEST_CASE(bsend_recv) {
   BOOST_TEST(bsend_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(bsend_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(bsend_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // MPLR_REFLECTION_TEMPLATE types
+  // MP1_REFLECTION_TEMPLATE types
   BOOST_TEST(bsend_recv_test(wrapper<int>{42}));
   BOOST_TEST(bsend_recv_test(wrapper<double>{3.14}));
   BOOST_TEST(bsend_recv_test(pair_like<int, double>{1, 2.3}));
-#if __cplusplus >= 202002L
-  {
-    int array[]{1, 2, 3, 4, 5};
-    std::span span{array};
-    BOOST_TEST(bsend_recv_test(span));
-  }
-#endif
   // strings and STL containers
   BOOST_TEST(bsend_recv_test(std::string{"Hello World"}));
   BOOST_TEST(bsend_recv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(bsend_recv_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(bsend_recv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(bsend_recv_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
   // iterators
   BOOST_TEST(bsend_recv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(bsend_recv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(bsend_recv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(bsend_recv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
 }
 
 
 BOOST_AUTO_TEST_CASE(ssend_recv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(ssend_recv_test());
@@ -527,34 +430,27 @@ BOOST_AUTO_TEST_CASE(ssend_recv) {
   BOOST_TEST(ssend_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(ssend_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(ssend_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // MPLR_REFLECTION_TEMPLATE types
+  // MP1_REFLECTION_TEMPLATE types
   BOOST_TEST(ssend_recv_test(wrapper<int>{42}));
   BOOST_TEST(ssend_recv_test(wrapper<double>{3.14}));
   BOOST_TEST(ssend_recv_test(pair_like<int, double>{1, 2.3}));
-#if __cplusplus >= 202002L
-  {
-    int array[]{1, 2, 3, 4, 5};
-    std::span span{array};
-    BOOST_TEST(ssend_recv_test(span));
-  }
-#endif
   // strings and STL containers
   BOOST_TEST(ssend_recv_test(std::string{"Hello World"}));
   BOOST_TEST(ssend_recv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(ssend_recv_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(ssend_recv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ssend_recv_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
   // iterators
   BOOST_TEST(ssend_recv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(ssend_recv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(ssend_recv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ssend_recv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
 }
 
 
 BOOST_AUTO_TEST_CASE(rsend_recv) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(rsend_recv_test());
@@ -591,26 +487,19 @@ BOOST_AUTO_TEST_CASE(rsend_recv) {
   BOOST_TEST(rsend_recv_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(rsend_recv_test(std::tuple<int, double, bool>{1, 2.3, true}));
   BOOST_TEST(rsend_recv_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // MPLR_REFLECTION_TEMPLATE types
+  // MP1_REFLECTION_TEMPLATE types
   BOOST_TEST(rsend_recv_test(wrapper<int>{42}));
   BOOST_TEST(rsend_recv_test(wrapper<double>{3.14}));
   BOOST_TEST(rsend_recv_test(pair_like<int, double>{1, 2.3}));
-#if __cplusplus >= 202002L
-  {
-    int array[]{1, 2, 3, 4, 5};
-    std::span span{array};
-    BOOST_TEST(rsend_recv_test(span));
-  }
-#endif
   // strings and STL containers
   BOOST_TEST(rsend_recv_test(std::string{"Hello World"}));
   BOOST_TEST(rsend_recv_test(std::wstring{L"Hello World"}));
   BOOST_TEST(rsend_recv_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(rsend_recv_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(rsend_recv_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
   // iterators
   BOOST_TEST(rsend_recv_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
   BOOST_TEST(rsend_recv_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
   BOOST_TEST(rsend_recv_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(rsend_recv_iter_test(std::set<int>{1, 2, 3, 4, 5}));
+  // std::set is excluded (keyed, not flat); see the compile-fail probes.
 }

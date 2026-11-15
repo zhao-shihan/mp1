@@ -1,0 +1,33 @@
+name: Install pinned clang-tidy
+description: Download and cache LLVM 21.1.8, including clang-tidy, run-clang-tidy and clang-tidy-diff.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache LLVM 21.1.8
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/mp1-llvm/21.1.8
+        key: llvm-21.1.8-linux-x64-v1
+
+    - name: Download LLVM 21.1.8
+      shell: bash
+      run: |
+        set -euo pipefail
+        dest="$HOME/.cache/mp1-llvm/21.1.8"
+        if [[ -x "$dest/bin/clang-tidy" ]]; then
+          echo "clang-tidy already cached at $dest"
+          exit 0
+        fi
+        url="https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/LLVM-21.1.8-Linux-X64.tar.xz"
+        sha="b3b7f2801d15d50736acea3c73982994d025b01c2f035b91ae3b49d1b575732b"
+        archive=$(mktemp)
+        trap 'rm -f "$archive"' EXIT
+        curl -fsSL --retry 3 --retry-delay 2 "$url" -o "$archive"
+        echo "$sha  $archive" | sha256sum --check -
+        mkdir -p "$dest"
+        tar -xJf "$archive" -C "$dest" --strip-components=1
+
+    - name: Put LLVM on PATH
+      shell: bash
+      run: echo "$HOME/.cache/mp1-llvm/21.1.8/bin" >> "$GITHUB_PATH"

@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Non-REQUIRED: the consumer's find_package(mp1 ... REQUIRED) makes it fatal.
+find_dependency(MPI 4.1 COMPONENTS CXX)
+
+include("${CMAKE_CURRENT_LIST_DIR}/mp1Targets.cmake")
+
+check_required_components(mp1)

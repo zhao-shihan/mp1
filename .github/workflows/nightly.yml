@@ -1,0 +1,361 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
+  # The provider install step puts its launcher on PATH before configure.  The
+  # name is standard across the matrix providers; a job can override it.
+  MPIEXEC_EXECUTABLE: mpiexec
+
+jobs:
+  plan:
+    name: plan / MPI matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      openmpi_version: ${{ steps.pins.outputs.openmpi_version }}
+      openmpi_sha256: ${{ steps.pins.outputs.openmpi_sha256 }}
+      mpich_floor_version: ${{ steps.pins.outputs.mpich_floor_version }}
+      mpich_floor_sha256: ${{ steps.pins.outputs.mpich_floor_sha256 }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Validate the MPI matrix
+        run: |
+          python3 ci/matrix-plan.py --profile nightly --format text
+      - name: Emit pins
+        id: pins
+        run: |
+          {
+            echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field version)"
+            echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field sha256)"
+            echo "mpich_floor_version=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field version)"
+            echo "mpich_floor_sha256=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field sha256)"
+          } >>"$GITHUB_OUTPUT"
+
+  mpich-4-3-2-floor-debug:
+    name: mpich 4.3.2 floor debug
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      MPIEXEC_PREFLAGS: ""
+      MP1_TEST_REQUIRE_FEATURES: "wrap;shared"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_floor_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-mpich-${{ needs.plan.outputs.mpich_floor_version }}-${{ needs.plan.outputs.mpich_floor_sha256 }}-v2
+
+      - name: Install MPICH floor
+        run: |
+          ci/install-mpi.sh mpich "${{ needs.plan.outputs.mpich_floor_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_floor_version }}" \
+            "${{ needs.plan.outputs.mpich_floor_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_floor_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity is exactly MPI 4.1
+        run: |
+          ci/assert-mpi.sh mpich "${{ needs.plan.outputs.mpich_floor_version }}" floor
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS="$MPIEXEC_PREFLAGS" \
+            -DMP1_TEST_EXTRA_RANKS=ON \
+            -DMP1_TEST_REQUIRE_FEATURES="$MP1_TEST_REQUIRE_FEATURES" \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Full test suite
+        run: |
+          ci/run-ctest.sh --test-dir build --output-on-failure --timeout 240
+
+      # CTest reports 77 as "Skipped" and would leave a required-capability leg
+      # green, so run the scenario directly as well.  MP1_REQUIRE_SHARED=1
+      # makes a missing multi-process shared-memory domain exit 1 instead.
+      - name: Required shared-memory RMA gate
+        if: contains(env.MP1_TEST_REQUIRE_FEATURES, 'shared')
+        run: |
+          MP1_REQUIRE_SHARED=1 "$MPIEXEC_EXECUTABLE" $MPIEXEC_PREFLAGS \
+            -n 2 build/test/mp1_test_rma_shared
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-mpich-4.3.2-floor
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  openmpi-6-0-0rc2-debug:
+    needs: plan
+    name: openmpi 6.0.0rc2 debug
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      MPIEXEC_PREFLAGS: "--oversubscribe"
+      MP1_TEST_REQUIRE_FEATURES: "wrap;shared"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-openmpi-${{ needs.plan.outputs.openmpi_version }}-${{ needs.plan.outputs.openmpi_sha256 }}-v2
+
+      - name: Install Open MPI
+        run: |
+          ci/install-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}" \
+            "${{ needs.plan.outputs.openmpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+
+      - name: Record MPI version
+        run: |
+          "$MPIEXEC_EXECUTABLE" --version
+          mpicxx --showme:version
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS="$MPIEXEC_PREFLAGS" \
+            -DMP1_TEST_EXTRA_RANKS=ON \
+            -DMP1_TEST_REQUIRE_FEATURES="$MP1_TEST_REQUIRE_FEATURES" \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Test
+        run: |
+          ci/run-ctest.sh --test-dir build --output-on-failure --timeout 180
+
+      # CTest reports 77 as "Skipped" and would leave a required-capability leg
+      # green, so run the scenario directly as well.  MP1_REQUIRE_SHARED=1
+      # makes a missing multi-process shared-memory domain exit 1 instead.
+      - name: Required shared-memory RMA gate
+        if: contains(env.MP1_TEST_REQUIRE_FEATURES, 'shared')
+        run: |
+          MP1_REQUIRE_SHARED=1 "$MPIEXEC_EXECUTABLE" $MPIEXEC_PREFLAGS \
+            -n 2 build/test/mp1_test_rma_shared
+
+      - name: Example smoke
+        run: |
+          for example in gatherv matrix_gather vibrating_string_mp1; do
+            "$MPIEXEC_EXECUTABLE" $MPIEXEC_PREFLAGS -n 4 \
+              "build/examples/${example}" >/dev/null
+          done
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-openmpi-6.0.0rc2
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  perf:
+    needs: plan
+    name: perf
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-openmpi-${{ needs.plan.outputs.openmpi_version }}-${{ needs.plan.outputs.openmpi_sha256 }}-v2
+
+      - name: Install Open MPI
+        run: |
+          ci/install-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}" \
+            "${{ needs.plan.outputs.openmpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+
+      - name: Record MPI version
+        run: |
+          "$MPIEXEC_EXECUTABLE" --version
+          mpicxx --showme:version
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS=--oversubscribe \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_EXAMPLES=OFF \
+            -DMP1_BUILD_PERF=ON \
+            -DMP1_BUILD_PERF_RATIOS=ON
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Run perf suite
+        run: |
+          # Timing ratios need an otherwise idle machine: this is the one
+          # test family that is deliberately serial, independent of
+          # MP1_TEST_JOBS.
+          ctest --test-dir build -L 'perf' \
+            --output-on-failure --timeout 600 -j1
+
+      - name: Upload perf output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-perf
+          path: |
+            build/test/perf/perf-results/*.csv
+            build/test/perf/perf-results/*.jsonl
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  clang-tidy:
+    needs: plan
+    name: clang-tidy report
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Install pinned LLVM 21.1.8
+        uses: ./.github/actions/install-llvm-tidy
+
+      - name: Cache MPI
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-openmpi-${{ needs.plan.outputs.openmpi_version }}-${{ needs.plan.outputs.openmpi_sha256 }}-v2
+
+      - name: Install Open MPI
+        run: |
+          ci/install-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}" \
+            "${{ needs.plan.outputs.openmpi_sha256 }}"
+
+      - name: Put MPI on PATH
+        run: |
+          echo "$HOME/.cache/mp1-ci-mpi/openmpi-${{ needs.plan.outputs.openmpi_version }}/bin" \
+            >> "$GITHUB_PATH"
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+
+      - name: Configure for the compilation database
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DMPI_C_COMPILER=mpicc \
+            -DMPI_CXX_COMPILER=mpicxx \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS=--oversubscribe \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_EXAMPLES=ON \
+            -DMP1_INSTALL=OFF
+
+      - name: Full report
+        run: ci/clang-tidy-nightly.sh build > clang-tidy-nightly.log 2>&1 || true
+
+      - name: Header report
+        run: |
+          REPORT_ONLY=1 ci/clang-tidy-headers.sh ci/clang-tidy-nightly.yml \
+            > clang-tidy-headers.log 2>&1 || true
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "### clang-tidy nightly"
+            echo "- full: $(grep -c 'warning:' clang-tidy-nightly.log || true) warning lines"
+            echo "- headers: $(grep -c 'warning:' clang-tidy-headers.log || true) warning lines"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload clang-tidy logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-nightly
+          path: |
+            clang-tidy-nightly.log
+            clang-tidy-headers.log
+          if-no-files-found: warn

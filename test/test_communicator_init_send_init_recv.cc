@@ -1,29 +1,85 @@
-#define BOOST_TEST_MODULE communicator_init_send_init_recv
+// Persistent point-to-point tests: send_init/recv_init and the buffered, synchronous and ready
+// variants for every supported scalar type, plus pointer+count and pointer+layout forms (the
+// container and iterator *_init forms do not exist in the new API) and request state checks.
 
-#include "boost/test/included/unit_test.hpp"
-#include "mplr/mplr.hpp"
+#include "mp1/mp1.hpp"
 #include "test_helper.hpp"
 
+#include <boost/test/unit_test.hpp>
 #include <complex>
 #include <cstddef>
 #include <limits>
+#include <stdexcept>
 #include <tuple>
 #include <utility>
+#include <vector>
+
+
+namespace {
+
+  template<typename T>
+  mp1::request send_init_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    return mp1::send_init(comm, data, dest);
+  }
+
+  template<typename T>
+  mp1::request bsend_init_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    return mp1::bsend_init(comm, data, dest);
+  }
+
+  template<typename T>
+  mp1::request ssend_init_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    return mp1::ssend_init(comm, data, dest);
+  }
+
+  template<typename T>
+  mp1::request rsend_init_value(const mp1::mpi_communicator& comm, const T& data, int dest) {
+    return mp1::rsend_init(comm, data, dest);
+  }
+
+  template<typename T>
+  mp1::request recv_init_value(const mp1::mpi_communicator& comm, T& data, int source) {
+    return mp1::recv_init(comm, data, source);
+  }
+
+  template<class F>
+  bool throws_logic_error(F&& f) {
+    try {
+      f();
+    } catch (const std::logic_error&) {
+      return true;
+    } catch (...) {
+      return false;
+    }
+    return false;
+  }
+
+  template<class F>
+  bool throws_invalid_argument(F&& f) {
+    try {
+      f();
+    } catch (const std::invalid_argument&) {
+      return true;
+    }
+    return false;
+  }
+
+}  // namespace
 
 
 bool send_init_recv_init_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.send_init(1)};
+    auto r{mp1::send_init(comm_world, std::span<int>{}, 1)};
     r.start();
     r.wait();
     r.start();
     r.wait();
   }
   if (comm_world.rank() == 1) {
-    auto r{comm_world.recv_init(0)};
+    auto r{mp1::recv_init(comm_world, std::span<int>{}, 0)};
     r.start();
     while (not r.test()) {
     }
@@ -37,11 +93,11 @@ bool send_init_recv_init_test() {
 
 template<typename T>
 bool send_init_recv_init_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.send_init(data, 1)};
+    auto r{send_init_value(comm_world, data, 1)};
     r.start();
     r.wait();
     r.start();
@@ -50,7 +106,7 @@ bool send_init_recv_init_test(const T& data) {
   if (comm_world.rank() == 1) {
     bool ok{true};
     T data_r;
-    auto r{comm_world.recv_init(data_r, 0)};
+    auto r{recv_init_value(comm_world, data_r, 0)};
     r.start();
     while (not r.test()) {
     }
@@ -65,13 +121,14 @@ bool send_init_recv_init_test(const T& data) {
 }
 
 
+// Pointer+count form (the replacement for the removed container/iterator *_init forms).
 template<typename T>
-bool send_init_recv_init_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+bool buffer_send_init_recv_init_test(const std::vector<T>& data) {
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.send_init(std::begin(data), std::end(data), 1)};
+    auto r{mp1::send_init(comm_world, std::span(data), 1)};
     r.start();
     r.wait();
     r.start();
@@ -79,54 +136,72 @@ bool send_init_recv_init_iter_test(const T& data) {
   }
   if (comm_world.rank() == 1) {
     bool ok{true};
-    T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      std::vector<typename T::value_type> data_t(data.size());
-      auto r{comm_world.recv_init(std::begin(data_t), std::end(data_t), 0)};
-      r.start();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      r.start();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      return ok;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      auto r{comm_world.recv_init(std::begin(data_r), std::end(data_r), 0)};
-      r.start();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      r.start();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      return ok;
+    std::vector<T> data_r(data.size());
+    auto r{mp1::recv_init(comm_world, std::span(data_r), 0)};
+    r.start();
+    while (not r.test()) {
     }
+    ok = ok and data_r == data;
+    r.start();
+    while (not r.test()) {
+    }
+    ok = ok and data_r == data;
+    return ok;
   }
   return true;
 }
 
 
-bool bsend_init_recv_init_test() {
-  const auto comm_world = mplr::comm_world();
+// Pointer+layout form: a strided layout selects every other element.
+template<typename T>
+bool layout_send_init_recv_init_test() {
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
+  constexpr int count = 3;
+  auto l = mp1::layout<T>::vector(2, 1, 2);  // elements 0 and 2
+  std::vector<T> data(count);
+  for (int i{0}; i < count; ++i)
+    data[static_cast<std::size_t>(i)] = static_cast<T>(i + 1);
   if (comm_world.rank() == 0) {
-    mplr::bsend_buffer buff(mplr::bsend_overhead);
-    auto r{comm_world.bsend_init(1)};
+    auto r{mp1::send_init(comm_world, mp1::region{data.data(), l}, 1)};
     r.start();
     r.wait();
     r.start();
     r.wait();
   }
   if (comm_world.rank() == 1) {
-    auto r{comm_world.recv_init(0)};
+    bool ok{true};
+    std::vector<T> data_r(count);
+    auto r{mp1::recv_init(comm_world, mp1::region{data_r.data(), l}, 0)};
+    r.start();
+    while (not r.test()) {
+    }
+    ok = ok and data_r[0] == data[0] and data_r[1] == T{} and data_r[2] == data[2];
+    r.start();
+    while (not r.test()) {
+    }
+    ok = ok and data_r[0] == data[0] and data_r[2] == data[2];
+    return ok;
+  }
+  return true;
+}
+
+
+bool bsend_init_recv_init_test() {
+  const auto comm_world = mp1::comm_world();
+  if (comm_world.size() < 2)
+    return false;
+  if (comm_world.rank() == 0) {
+    mp1::bsend_buffer buff(mp1::bsend_overhead);
+    auto r{mp1::bsend_init(comm_world, std::span<int>{}, 1)};
+    r.start();
+    r.wait();
+    r.start();
+    r.wait();
+  }
+  if (comm_world.rank() == 1) {
+    auto r{mp1::recv_init(comm_world, std::span<int>{}, 0)};
     r.start();
     while (not r.test()) {
     }
@@ -140,17 +215,12 @@ bool bsend_init_recv_init_test() {
 
 template<typename T>
 bool bsend_init_recv_init_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    int size;
-    if constexpr (has_size<T>::value)
-      size = comm_world.bsend_size<typename T::value_type>(data.size());
-    else
-      size = comm_world.bsend_size<T>();
-    mplr::bsend_buffer buff(size);
-    auto r{comm_world.bsend_init(data, 1)};
+    mp1::bsend_buffer buff(payload_size_bytes(data));
+    auto r{bsend_init_value(comm_world, data, 1)};
     r.start();
     r.wait();
     r.start();
@@ -159,7 +229,7 @@ bool bsend_init_recv_init_test(const T& data) {
   if (comm_world.rank() == 1) {
     bool ok{true};
     T data_r;
-    auto r{comm_world.recv_init(data_r, 0)};
+    auto r{recv_init_value(comm_world, data_r, 0)};
     r.start();
     while (not r.test()) {
     }
@@ -174,73 +244,19 @@ bool bsend_init_recv_init_test(const T& data) {
 }
 
 
-template<typename T>
-bool bsend_init_recv_init_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
-  if (comm_world.size() < 2)
-    return false;
-  if (comm_world.rank() == 0) {
-    int size;
-    if constexpr (has_size<T>::value)
-      size = comm_world.bsend_size<typename T::value_type>(data.size());
-    else
-      size = comm_world.bsend_size<T>();
-    mplr::bsend_buffer buff(size);
-    auto r{comm_world.bsend_init(std::begin(data), std::end(data), 1)};
-    r.start();
-    r.wait();
-    r.start();
-    r.wait();
-  }
-  if (comm_world.rank() == 1) {
-    bool ok{true};
-    T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      std::vector<typename T::value_type> data_t(data.size());
-      auto r{comm_world.recv_init(std::begin(data_t), std::end(data_t), 0)};
-      r.start();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      r.start();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      return ok;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      auto r{comm_world.recv_init(std::begin(data_r), std::end(data_r), 0)};
-      r.start();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      r.start();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      return ok;
-    }
-  }
-  return true;
-}
-
-
 bool ssend_init_recv_init_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.ssend_init(1)};
+    auto r{mp1::ssend_init(comm_world, std::span<int>{}, 1)};
     r.start();
     r.wait();
     r.start();
     r.wait();
   }
   if (comm_world.rank() == 1) {
-    auto r{comm_world.recv_init(0)};
+    auto r{mp1::recv_init(comm_world, std::span<int>{}, 0)};
     r.start();
     while (not r.test()) {
     }
@@ -254,11 +270,11 @@ bool ssend_init_recv_init_test() {
 
 template<typename T>
 bool ssend_init_recv_init_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.ssend_init(data, 1)};
+    auto r{ssend_init_value(comm_world, data, 1)};
     r.start();
     r.wait();
     r.start();
@@ -267,7 +283,7 @@ bool ssend_init_recv_init_test(const T& data) {
   if (comm_world.rank() == 1) {
     bool ok{true};
     T data_r;
-    auto r{comm_world.recv_init(data_r, 0)};
+    auto r{recv_init_value(comm_world, data_r, 0)};
     r.start();
     while (not r.test()) {
     }
@@ -282,79 +298,31 @@ bool ssend_init_recv_init_test(const T& data) {
 }
 
 
-template<typename T>
-bool ssend_init_recv_init_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
-  if (comm_world.size() < 2)
-    return false;
-  if (comm_world.rank() == 0) {
-    auto r{comm_world.ssend_init(std::begin(data), std::end(data), 1)};
-    r.start();
-    r.wait();
-    r.start();
-    r.wait();
-  }
-  if (comm_world.rank() == 1) {
-    bool ok{true};
-    T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      std::vector<typename T::value_type> data_t(data.size());
-      auto r{comm_world.recv_init(std::begin(data_t), std::end(data_t), 0)};
-      r.start();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      r.start();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      return ok;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      auto r{comm_world.recv_init(std::begin(data_r), std::end(data_r), 0)};
-      r.start();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      r.start();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      return ok;
-    }
-  }
-  return true;
-}
-
-
 bool rsend_init_recv_init_test() {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.rsend_init(1)};
-    comm_world.barrier();
+    auto r{mp1::rsend_init(comm_world, std::span<int>{}, 1)};
+    mp1::barrier(comm_world);
     r.start();
     r.wait();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
     r.start();
     r.wait();
   } else if (comm_world.rank() == 1) {
-    auto r{comm_world.recv_init(0)};
+    auto r{mp1::recv_init(comm_world, std::span<int>{}, 0)};
     r.start();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
     while (not r.test()) {
     }
     r.start();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
     while (not r.test()) {
     }
   } else {
-    comm_world.barrier();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
+    mp1::barrier(comm_world);
   }
   return true;
 }
@@ -362,99 +330,84 @@ bool rsend_init_recv_init_test() {
 
 template<typename T>
 bool rsend_init_recv_init_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
     return false;
   if (comm_world.rank() == 0) {
-    auto r{comm_world.rsend_init(data, 1)};
-    comm_world.barrier();
+    auto r{rsend_init_value(comm_world, data, 1)};
+    mp1::barrier(comm_world);
     r.start();
     r.wait();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
     r.start();
     r.wait();
   } else if (comm_world.rank() == 1) {
     bool ok{true};
     T data_r;
-    auto r{comm_world.recv_init(data_r, 0)};
+    auto r{recv_init_value(comm_world, data_r, 0)};
     r.start();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
     while (not r.test()) {
     }
     ok = ok and data_r == data;
     r.start();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
     while (not r.test()) {
     }
     ok = ok and data_r == data;
     return ok;
   } else {
-    comm_world.barrier();
-    comm_world.barrier();
+    mp1::barrier(comm_world);
+    mp1::barrier(comm_world);
   }
   return true;
 }
 
 
-template<typename T>
-bool rsend_init_recv_init_iter_test(const T& data) {
-  const auto comm_world = mplr::comm_world();
+BOOST_AUTO_TEST_CASE(persistent_request_state) {
+  if (not mp1::initialized())
+    mp1::init();
+
+  const auto comm_world = mp1::comm_world();
   if (comm_world.size() < 2)
-    return false;
+    return;
+
   if (comm_world.rank() == 0) {
-    auto r{comm_world.rsend_init(std::begin(data), std::end(data), 1)};
-    comm_world.barrier();
-    r.start();
-    r.wait();
-    comm_world.barrier();
-    r.start();
-    r.wait();
+    int value = 42;
+    auto send = mp1::send_init(comm_world, value, 1);
+    BOOST_TEST(send.is_valid());
+    BOOST_TEST(not send.is_active());
+    BOOST_TEST(send.is_persistent());
+    // Waiting an inactive persistent request returns the empty status without MPI.
+    BOOST_TEST(not send.wait().is_cancelled());
+    // start() makes the request active; a second start() is an error.
+    send.start();
+    BOOST_TEST(send.is_active());
+    BOOST_TEST(throws_logic_error([&] { send.start(); }));
+    send.wait();
+    BOOST_TEST(send.is_valid());
+    BOOST_TEST(not send.is_active());
+    // A non-persistent request rejects start().
+    auto plain = mp1::isend(comm_world, std::span<int>{}, 1);
+    BOOST_TEST(throws_invalid_argument([&] { plain.start(); }));
+    plain.wait();
   } else if (comm_world.rank() == 1) {
-    bool ok{true};
-    T data_r;
-    if constexpr (std::is_const_v<std::remove_reference_t<decltype(*std::begin(data_r))>>) {
-      std::vector<typename T::value_type> data_t(data.size());
-      auto r{comm_world.recv_init(std::begin(data_t), std::end(data_t), 0)};
-      r.start();
-      comm_world.barrier();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      r.start();
-      comm_world.barrier();
-      while (not r.test()) {
-      }
-      data_r = T(std::begin(data_t), std::end(data_t));
-      ok = ok and data_r == data;
-      return ok;
-    } else {
-      if constexpr (has_resize<T>())
-        data_r.resize(data.size());
-      auto r{comm_world.recv_init(std::begin(data_r), std::end(data_r), 0)};
-      r.start();
-      comm_world.barrier();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      r.start();
-      comm_world.barrier();
-      while (not r.test()) {
-      }
-      ok = ok and data_r == data;
-      return ok;
-    }
-  } else {
-    comm_world.barrier();
-    comm_world.barrier();
+    int value = 0;
+    auto recv = mp1::recv_init(comm_world, value, 0);
+    recv.start();
+    BOOST_TEST(recv.is_active());
+    recv.wait();
+    BOOST_TEST(recv.is_valid());
+    BOOST_TEST(not recv.is_active());
+    recv.start();
+    recv.wait();
   }
-  return true;
 }
 
 
 BOOST_AUTO_TEST_CASE(send_init_recv_init) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(send_init_recv_init_test());
@@ -490,18 +443,17 @@ BOOST_AUTO_TEST_CASE(send_init_recv_init) {
   // pairs, tuples and arrays
   BOOST_TEST(send_init_recv_init_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(send_init_recv_init_test(std::tuple<int, double, bool>{1, 2.3, true}));
-  BOOST_TEST(send_init_recv_init_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // iterators
-  BOOST_TEST(send_init_recv_init_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  BOOST_TEST(send_init_recv_init_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(send_init_recv_init_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(send_init_recv_init_iter_test(std::set<int>{1, 2, 3, 4, 5}));
+  // pointer+count and pointer+layout (the removed container/iterator *_init forms)
+  BOOST_TEST(buffer_send_init_recv_init_test(std::vector<int>{1, 2, 3, 4, 5}));
+  BOOST_TEST((buffer_send_init_recv_init_test(
+      std::vector<std::pair<int, double>>{{1, 2.3}, {3, 4.5}})));
+  BOOST_TEST(layout_send_init_recv_init_test<int>());
 }
 
 
 BOOST_AUTO_TEST_CASE(bsend_init_recv_init) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(bsend_init_recv_init_test());
@@ -537,18 +489,12 @@ BOOST_AUTO_TEST_CASE(bsend_init_recv_init) {
   // pairs, tuples and arrays
   BOOST_TEST(bsend_init_recv_init_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(bsend_init_recv_init_test(std::tuple<int, double, bool>{1, 2.3, true}));
-  BOOST_TEST(bsend_init_recv_init_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // iterators
-  BOOST_TEST(bsend_init_recv_init_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  BOOST_TEST(bsend_init_recv_init_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(bsend_init_recv_init_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(bsend_init_recv_init_iter_test(std::set<int>{1, 2, 3, 4, 5}));
 }
 
 
 BOOST_AUTO_TEST_CASE(ssend_init_recv_init) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(ssend_init_recv_init_test());
@@ -584,18 +530,12 @@ BOOST_AUTO_TEST_CASE(ssend_init_recv_init) {
   // pairs, tuples and arrays
   BOOST_TEST(ssend_init_recv_init_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(ssend_init_recv_init_test(std::tuple<int, double, bool>{1, 2.3, true}));
-  BOOST_TEST(ssend_init_recv_init_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // iterators
-  BOOST_TEST(ssend_init_recv_init_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ssend_init_recv_init_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ssend_init_recv_init_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(ssend_init_recv_init_iter_test(std::set<int>{1, 2, 3, 4, 5}));
 }
 
 
 BOOST_AUTO_TEST_CASE(rsend_init_recv_init) {
-  if (not mplr::initialized())
-    mplr::init();
+  if (not mp1::initialized())
+    mp1::init();
 
   // empty message
   BOOST_TEST(rsend_init_recv_init_test());
@@ -631,10 +571,4 @@ BOOST_AUTO_TEST_CASE(rsend_init_recv_init) {
   // pairs, tuples and arrays
   BOOST_TEST(rsend_init_recv_init_test(std::pair<int, double>{1, 2.3}));
   BOOST_TEST(rsend_init_recv_init_test(std::tuple<int, double, bool>{1, 2.3, true}));
-  BOOST_TEST(rsend_init_recv_init_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  // iterators
-  BOOST_TEST(rsend_init_recv_init_iter_test(std::array<int, 5>{1, 2, 3, 4, 5}));
-  BOOST_TEST(rsend_init_recv_init_iter_test(std::vector<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(rsend_init_recv_init_iter_test(std::list<int>{1, 2, 3, 4, 5}));
-  BOOST_TEST(rsend_init_recv_init_iter_test(std::set<int>{1, 2, 3, 4, 5}));
 }
