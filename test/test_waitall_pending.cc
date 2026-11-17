@@ -12,8 +12,9 @@
 //   2. The end-to-end cases force the real Waitall state with a truncation error on one slot
 //      and an unreceived message on another, using a point-to-point signal handshake instead
 //      of a sleep. Only a provider that returns from Waitall as soon as one slot fails can
-//      report PENDING for the others (Open MPI does; MPICH 4.3.2 waits for every slot and
-//      cannot produce this state), so those cases run when OMPI_MAJOR_VERSION is defined.
+//      report PENDING for the others (Open MPI does; MPICH 4.3.2 and Intel MPI 2021.19
+//      wait for every slot and cannot produce this state), so those cases run when
+//      OMPI_MAJOR_VERSION is defined.
 //
 // It provides no main: the shared test harness links the Boost test main.
 
@@ -180,11 +181,13 @@ BOOST_AUTO_TEST_CASE(nonpersistent_pending_slot_stays_active) {
     BOOST_TEST_MESSAGE("wait_all pending test needs at least 2 ranks");
     return;
   }
+  // Intel MPI 2021.19 was also observed to wait for every slot (an incomplete-slot probe
+  // timed out), so it takes the same skip as MPICH.
 #if !defined(OMPI_MAJOR_VERSION)
   BOOST_TEST_MESSAGE(
-      "wait_all PENDING end-to-end case skipped: MPICH 4.3.2 MPI_Waitall waits for every slot "
-      "and cannot report MPI_ERR_PENDING before the other slot completes; "
-      "forced_pending_batch_transaction covers the state machine");
+      "wait_all PENDING end-to-end case skipped: MPICH 4.3.2 and Intel MPI 2021.19 "
+      "MPI_Waitall wait for every slot and cannot report MPI_ERR_PENDING before the other "
+      "slot completes; forced_pending_batch_transaction covers the state machine");
   return;
 #else
   // A truncation must be reported to the wrapper as a per-slot completion error instead of
@@ -211,7 +214,8 @@ BOOST_AUTO_TEST_CASE(nonpersistent_pending_slot_stays_active) {
     std::vector<int> capacity;  // resized to the posted capacity before MPI, then to the count
     std::vector<mp1::request> requests;
     requests.push_back(mp1::irecv(mp1::comm_world(), std::span<int>(&one, 1), 0, mp1::tag{1}));
-    requests.push_back(mp1::irecv(mp1::comm_world(), capacity, mp1::capacity{4}, 0, mp1::tag{2}));
+    requests.push_back(
+        mp1::irecv(mp1::comm_world(), capacity, mp1::capacity{4}, 0, mp1::tag{2}));
     BOOST_TEST(capacity.size() == 4);
     BOOST_TEST(requests[0].is_active());
     BOOST_TEST(requests[1].is_active());
@@ -262,8 +266,9 @@ BOOST_AUTO_TEST_CASE(persistent_pending_slot_stays_active) {
   }
 #if !defined(OMPI_MAJOR_VERSION)
   BOOST_TEST_MESSAGE(
-      "wait_all persistent PENDING end-to-end case skipped: MPICH 4.3.2 MPI_Waitall waits for "
-      "every slot; forced_pending_batch_transaction covers the state machine");
+      "wait_all persistent PENDING end-to-end case skipped: MPICH 4.3.2 and Intel MPI "
+      "2021.19 MPI_Waitall wait for every slot; forced_pending_batch_transaction covers the "
+      "state machine");
   return;
 #else
   BOOST_TEST(MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN) == MPI_SUCCESS);

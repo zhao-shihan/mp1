@@ -367,7 +367,7 @@ namespace mp1 {
       facts.true_extent = checked_count(true_extent, ctx);
       // MPI 4.1 §5.1.8 defines the true lower bound/extent as the minimum/maximum over the
       // typemap entries, which is not defined for an empty typemap.  A provider may return a
-      // sentinel there (Open MPI 6.0.0rc2 returns true_lb = INT64_MAX, true_extent = 1 for
+      // sentinel there (Open MPI 6.0.x returns true_lb = INT64_MAX, true_extent = 1 for
       // some zero-byte derived types), making the public true_byte_upper_bound() throw for a
       // valid layout.  The empty map addresses no byte, so normalize to (0, 0) and keep the
       // provider's byte extent marker (a resized empty type may carry a nonzero extent).

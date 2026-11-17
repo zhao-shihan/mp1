@@ -128,7 +128,7 @@ case. It does not prove MPI portability, absence of UB, or correctness of an
 assumption.
 
 - Start from the MPI 4.1 text and the C++ rules, then design the test.
-- Run the relevant suite on both pinned providers when the behaviour is
+- Run the relevant suite on the pinned providers when the behaviour is
   provider-sensitive.
 - Use ASan/UBSan where ownership, lifetime, or callback code changes.
 - Do not weaken a test, delete a case, or change its expected result to make a
@@ -166,9 +166,9 @@ design.
 
 A release is a gate, not a commit message.
 
-- Run the full release checks: OMPI and pinned MPICH builds, default and
-  extra-ranks CTest, compile-fail, compile-pass controls, examples, ASan/UBSan
-  targeted, static checks, formatting, install/consumer.
+- Run the full release checks: MPICH, Open MPI and Intel MPI builds, default
+  and extra-ranks CTest, compile-fail, compile-pass controls, examples,
+  ASan/UBSan targeted, static checks, formatting, install/consumer.
 - Do not tag, push, rewrite `main`, or amend a release commit unless the
   maintainer explicitly asks for that exact operation.
 - Do not hide a provider workaround in the library to make a gate green; put it
@@ -245,10 +245,20 @@ not part of the default release count.
 
 ### 3.3 Provider matrix
 
-The release matrix is Open MPI 6.0.0rc2 and MPICH 4.3.2. Use the pinned
-`mpicxx`/`mpiexec` and, for MPICH, ensure `LD_LIBRARY_PATH` points at that
-prefix's `lib` directory so the intended `libmpi` is loaded. Do not report a
-MPICH run that silently loaded the system MPICH/Open MPI shared library.
+The release matrix is MPICH 4.3.2 (floor, tarball), Open MPI 6.0.0rc3
+(provisional, tarball) and Intel MPI 2021.19 (stable, Intel oneAPI apt). Use
+the provider's `mpicxx`/`mpiexec` through `ci/mpi-env.sh`, which selects
+absolute paths; do not rely on a bare `mpicxx` from another provider. For a
+tarball provider, ensure `LD_LIBRARY_PATH` points at that prefix's `lib`
+directory so the intended `libmpi` is loaded. Do not report a MPICH run that
+silently loaded the system MPICH/Open MPI shared library.
+
+Intel MPI is installed from Intel's oneAPI apt repository; it is not in the
+Ubuntu archive. Intel's default `shm` fabric cannot start `MPI_Comm_spawn`
+children, so the spawn tests export `I_MPI_FABRICS=shm:ofi` (see
+`test/CMakeLists.txt`). `ci/mpi-env.sh` also sources the bundled libfabric
+`vars.sh`; Intel MPI's own `vars.sh` does not put `FI_PROVIDER_PATH` on the
+loader path, and `MPI_Init` under `shm:ofi` fails without it.
 
 Open MPI ASan runs on some hosts need the documented MCA workaround
 (`OMPI_MCA_pml=ob1`, `OMPI_MCA_btl=self,tcp`, or the patcher override); this is
@@ -367,7 +377,7 @@ cmake --install build --prefix /tmp/mp1-install
 Before declaring a release candidate:
 
 - [ ] `VERSION` and generated version agree; no hardcoded version in code.
-- [ ] default CTest on OMPI and pinned MPICH is green;
+- [ ] default CTest on MPICH, Open MPI and Intel MPI is green;
 - [ ] extra-ranks CTest is green;
 - [ ] compile-fail, compile-pass controls, compile-all, examples, wrap coverage;
 - [ ] ASan/UBSan targeted, no diagnostics;

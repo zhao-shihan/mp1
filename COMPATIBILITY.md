@@ -325,8 +325,8 @@ mixing safe. `MPI_NO_OP` is legal only in
 ## Provider caveats
 
 These are implementation support differences, not changes to mp1's contract.
-The release suite is exercised with both Open MPI and MPICH; the exact versions
-and configurations are recorded in the release evidence.
+The release suite is exercised with MPICH, Open MPI and Intel MPI; the exact
+versions and configurations are recorded in the release evidence.
 
 - **`MPI_REPLACE` with a derived datatype.** MPI 4.1 §12.3.4 permits a
   homogeneous-derived datatype for the accumulating families. Implementations
@@ -354,9 +354,11 @@ and configurations are recorded in the release evidence.
   `MPI_Waitall` return `MPI_ERR_IN_STATUS` as soon as one slot fails and report
   `MPI_ERR_PENDING` for a slot that "has neither failed nor completed"; a
   provider may instead wait for every slot. Open MPI can return the PENDING
-  state, while pinned MPICH 4.3.2 waits for every slot and cannot. mp1 accepts
-  both: a PENDING slot stays active with its handle and payload, and a later
-  completion call reaps it. Portable code must not assume that one
+  state, while pinned MPICH 4.3.2 and Intel MPI 2021.19 wait for every slot and
+  cannot (both were verified by a direct incomplete-slot probe); the end-to-end
+  PENDING cases are skipped on those providers. mp1
+  accepts both: a PENDING slot stays active with its handle and payload, and a
+  later completion call reaps it. Portable code must not assume that one
   `wait_all`/`test_all` return means every slot is complete; check
   `status::error()` for `MPI_ERR_PENDING` and call again. `wait_some`/
   `test_some` omit a PENDING slot from the returned list for the same reason.
@@ -400,6 +402,51 @@ and configurations are recorded in the release evidence.
   expose a multi-process shared-memory domain, so a shared window over the
   world cannot be allocated. The MPI call then fails (fatal under the default
   handler); use a non-shared window or raw MPI when the capability is absent.
+- **Intel MPI `MPI_Comm_spawn` fabric.** Intel MPI 2021.19's default `shm`
+  fabric aborts `MPI_Comm_spawn` with "shm fabric does not support Spawns".
+  Use `I_MPI_FABRICS=shm:ofi`; the spawn tests export it. Intel MPI's own
+  `vars.sh` does not add the bundled libfabric to `FI_PROVIDER_PATH` or the
+  loader path, so `ci/mpi-env.sh` sources the oneAPI libfabric `vars.sh` too;
+  without it `MPI_Init` under `shm:ofi` fails. mp1 does not set the fabric
+  itself (it is a launch-environment choice).
+- **Intel MPI 2021.19 two-executable spawn.** The dedicated
+  `test_spawn_contract` scenario hangs in Intel's two-executable
+  `MPI_Comm_spawn` path even with `I_MPI_FABRICS=shm:ofi`; those entries are
+  skipped on Intel after the provider-independent option-payload checks. The
+  self-respawn `test_file_spawn_contract` scenario exercises `MPI_Comm_spawn`
+  on Intel with `shm:ofi`. Verify a two-executable spawn on this provider before
+  relying on it.
+- **Intel MPI 2021.19 large subarray commit.** A subarray whose byte size
+  exceeds 2 GiB (for example `sizes={INT_MAX,2}`, `subsizes={INT_MAX,1}`) makes
+  Intel abort inside `MPI_Type_commit` (dataloop assertion). The layout test
+  skips that case on Intel; avoid such subarrays on this provider.
+- **F90 datatypes on C-only builds.** `MPI_Type_create_f90_*` is exercised only
+  when the provider exposes the mapping. MPICH built with `--disable-fortran`
+  returns `MPI_DATATYPE_NULL`; Open MPI built with `--disable-mpi-fortran` can
+  return a non-null handle whose `MPI_Type_size_c` is `MPI_UNDEFINED`. That is
+  not a standard size result (MPI 4.1 §5.1.5 reserves `MPI_UNDEFINED` for an
+  OUT parameter that cannot express the size), but the C-only build does not
+  provide the F90 mapping; the layout rejection test skips only the positive
+  size sanity check and still checks the rejection and combiner contract. A
+  custom C++ trait mapped to such a zero-extent Fortran datatype is rejected by
+  the `native_datatype<T>()` validation; the allreduce and RMA tests skip their
+  data-movement part for that configuration; the allreduce path also asserts
+  that the reduction throws `std::invalid_argument` instead of sending.
+- **Intel MPI 2021.19 persistent collectives.** Reusing persistent requests
+  across cycles can return stale or undefined payloads. The reuse-heavy
+  gather/scatter, allgather/alltoall and intercommunicator cases (including the
+  variable/scatter form) are skipped on Intel (previous-cycle values or `-1`);
+  barrier/broadcast, variable, reduction and local-validation cases still run.
+  Use the non-persistent forms or another provider when these persistent
+  collectives are required.
+- **Intel MPI 2021.19 `MPI_Win_shared_query` on non-shared windows.** MPI 4.1
+  permits `MPI_Win_shared_query` on ALLOCATE, ALLOCATE_SHARED and CREATE
+  windows (only DYNAMIC is excluded). Intel 2021.19 aborts with "Incorrect
+  window flavor ... expected !MPI_WIN_FLAVOR_DYNAMIC" even for ALLOCATE and
+  CREATE windows; the RMA contract test skips only the success queries on Intel,
+  while its local rank rejection and DYNAMIC rejection still run. Use
+  ALLOCATE_SHARED or another provider when shared-querying a non-shared
+  window.
 - **`MPI_File_get_byte_offset` on a sequential file.** MPI 4.1 §14.4.3 permits
   this call with `MPI_MODE_SEQUENTIAL`, but provider support varies. A provider
   may reject it (the wrapper surfaces that as `mp1::mpi_error`), and pinned

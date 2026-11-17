@@ -28,6 +28,8 @@ jobs:
       openmpi_sha256: ${{ steps.pins.outputs.openmpi_sha256 }}
       mpich_floor_version: ${{ steps.pins.outputs.mpich_floor_version }}
       mpich_floor_sha256: ${{ steps.pins.outputs.mpich_floor_sha256 }}
+      intel_version: ${{ steps.pins.outputs.intel_version }}
+      intel_apt_packages: ${{ steps.pins.outputs.intel_apt_packages }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -38,10 +40,12 @@ jobs:
         id: pins
         run: |
           {
-            echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field version)"
-            echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field sha256)"
+            echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field version)"
+            echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field sha256)"
             echo "mpich_floor_version=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field version)"
             echo "mpich_floor_sha256=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field sha256)"
+            echo "intel_version=$(python3 ci/matrix-plan.py --provider intel-2021.19 --field version)"
+            echo "intel_apt_packages=$(python3 ci/matrix-plan.py --provider intel-2021.19 --field apt_packages)"
           } >>"$GITHUB_OUTPUT"
 
   mpich-4-3-2-floor-debug:
@@ -119,9 +123,80 @@ jobs:
           path: build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
 
-  openmpi-6-0-0rc2-debug:
+  intel-2021-19-debug:
     needs: plan
-    name: openmpi 6.0.0rc2 debug
+    name: intel 2021.19 debug
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      MPIEXEC_PREFLAGS: ""
+      MP1_TEST_REQUIRE_FEATURES: "wrap"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-test-dev
+
+      - name: Install Intel MPI
+        run: |
+          ci/install-oneapi-mpi.sh ${{ needs.plan.outputs.intel_apt_packages }}
+
+      - name: Select Intel MPI
+        run: |
+          ci/mpi-env.sh intel "${{ needs.plan.outputs.intel_version }}" --github-env
+
+      - name: Assert MPI identity
+        run: |
+          ci/assert-mpi.sh intel "${{ needs.plan.outputs.intel_version }}" stable
+
+      - name: Record MPI version
+        run: |
+          "$MPIEXEC_EXECUTABLE" --version
+          mpicxx -show
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER="$MPI_C_COMPILER" \
+            -DCMAKE_CXX_COMPILER="$MPI_CXX_COMPILER" \
+            -DMPI_C_COMPILER="$MPI_C_COMPILER" \
+            -DMPI_CXX_COMPILER="$MPI_CXX_COMPILER" \
+            -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
+            -DMPIEXEC_PREFLAGS="$MPIEXEC_PREFLAGS" \
+            -DMP1_TEST_EXTRA_RANKS=ON \
+            -DMP1_TEST_REQUIRE_FEATURES="$MP1_TEST_REQUIRE_FEATURES" \
+            -DBUILD_TESTING=ON \
+            -DMP1_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Test
+        run: |
+          ci/run-ctest.sh --test-dir build --output-on-failure --timeout 180
+
+      - name: Example smoke
+        run: |
+          for example in gatherv matrix_gather vibrating_string_mp1; do
+            "$MPIEXEC_EXECUTABLE" $MPIEXEC_PREFLAGS -n 4 \
+              "build/examples/${example}" >/dev/null
+          done
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-intel-2021.19
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  openmpi-6-0-0rc3-debug:
+    needs: plan
+    name: openmpi 6.0.0rc3 debug
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -202,7 +277,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-openmpi-6.0.0rc2
+          name: nightly-openmpi-6.0.0rc3
           path: build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
 

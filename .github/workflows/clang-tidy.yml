@@ -29,8 +29,8 @@ jobs:
         id: pins
         run: |
           {
-            echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field version)"
-            echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc2 --field sha256)"
+            echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field version)"
+            echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field sha256)"
           } >>"$GITHUB_OUTPUT"
 
   tidy:

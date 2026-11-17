@@ -1,11 +1,12 @@
 {
-  "schema": 1,
+  "schema": 2,
   "mpi_floor": "4.1",
   "notes": [
     "The floor entry must advertise exactly MPI 4.1 (MPI 4.1 section 9.1.1): it is the oldest implementation the project supports.",
-    "A newer implementation may replace a provider entry only by updating this file (version, URL and SHA256).",
-    "Open MPI 6.0.0rc2 is provisional: no Open MPI 6.0 stable exists, and an RC never substitutes for the floor.",
-    "Every provider must be pinned by URL and SHA256; install-mpi.sh verifies the checksum.",
+    "A tarball provider is pinned by URL and SHA256; install-mpi.sh verifies the checksum before extraction.",
+    "A oneapi-apt provider is installed from Intel's official oneAPI apt repository and tracks the latest package in that channel. It is not in the Ubuntu archive; the apt repository is the supported channel.",
+    "The oneapi-apt packages are intentionally not pinned to an exact build; ci/assert-mpi.sh fails closed if the installed provider version no longer matches the matrix version.",
+    "Open MPI 6.0.0rc3 is provisional: no Open MPI 6.0 stable exists, and an RC never substitutes for the floor.",
     "require_features is an opt-in, job-specific feature gate: list 'shared' only for a provider that exposes a multi-process shared-memory domain. A provider without that capability stays in the matrix without 'shared', and the shared-memory scenario may skip there."
   ],
   "providers": [
@@ -15,17 +16,32 @@
       "version": "4.3.2",
       "tier": "floor",
       "advertised_mpi_version": "4.1",
+      "install": "tarball",
       "url": "https://www.mpich.org/static/downloads/4.3.2/mpich-4.3.2.tar.gz",
       "sha256": "47d774587a7156a53752218c811c852e70ac44db9c502dc3f399b4cb817e3818"
     },
     {
-      "id": "openmpi-6.0.0rc2",
+      "id": "openmpi-6.0.0rc3",
       "family": "openmpi",
-      "version": "6.0.0rc2",
+      "version": "6.0.0rc3",
       "tier": "provisional",
       "advertised_mpi_version": "5.0",
-      "url": "https://download.open-mpi.org/release/open-mpi/v6.0/openmpi-6.0.0rc2.tar.bz2",
-      "sha256": "d86da6723bd4096f9b7936ac32255c2daf7a6684322b08996928a4d06133ab67"
+      "install": "tarball",
+      "url": "https://download.open-mpi.org/release/open-mpi/v6.0/openmpi-6.0.0rc3.tar.bz2",
+      "sha256": "62d5420325d56e79718c7015d2d6653da735c98430ed2cd6f61771ba43067525"
+    },
+    {
+      "id": "intel-2021.19",
+      "family": "intel",
+      "version": "2021.19",
+      "tier": "stable",
+      "advertised_mpi_version": "4.1",
+      "install": "oneapi-apt",
+      "apt_packages": [
+        "intel-oneapi-mpi-devel",
+        "intel-oneapi-libfabric"
+      ],
+      "runs_on": "ubuntu-24.04"
     }
   ],
   "profiles": {
@@ -41,14 +57,24 @@
         ]
       },
       {
-        "provider": "openmpi-6.0.0rc2",
-        "name": "provisional-openmpi-6.0.0rc2-debug",
+        "provider": "openmpi-6.0.0rc3",
+        "name": "provisional-openmpi-6.0.0rc3-debug",
         "build_type": "Debug",
         "compile_fail": true,
         "example_smoke": true,
         "require_features": [
           "wrap",
           "shared"
+        ]
+      },
+      {
+        "provider": "intel-2021.19",
+        "name": "stable-intel-2021.19-debug",
+        "build_type": "Debug",
+        "compile_fail": false,
+        "example_smoke": true,
+        "require_features": [
+          "wrap"
         ]
       }
     ],
@@ -65,8 +91,8 @@
         ]
       },
       {
-        "provider": "openmpi-6.0.0rc2",
-        "name": "provisional-openmpi-6.0.0rc2-debug",
+        "provider": "openmpi-6.0.0rc3",
+        "name": "provisional-openmpi-6.0.0rc3-debug",
         "build_type": "Debug",
         "compile_fail": true,
         "example_smoke": true,
@@ -74,6 +100,17 @@
         "require_features": [
           "wrap",
           "shared"
+        ]
+      },
+      {
+        "provider": "intel-2021.19",
+        "name": "stable-intel-2021.19-debug",
+        "build_type": "Debug",
+        "compile_fail": true,
+        "example_smoke": true,
+        "extra_ranks": true,
+        "require_features": [
+          "wrap"
         ]
       }
     ]

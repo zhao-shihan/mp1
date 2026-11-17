@@ -750,7 +750,7 @@ BOOST_AUTO_TEST_CASE(block_indexed_factories) {
 }
 
 // MPI 4.1 §5.1.8 defines the true lower bound/extent over the typemap entries; an empty
-// typemap leaves them undefined, and Open MPI 6.0.0rc2 returns a sentinel (true_lb = INT64_MAX,
+// typemap leaves them undefined, and Open MPI 6.0.x returns a sentinel (true_lb = INT64_MAX,
 // true_extent = 1) for some zero-byte derived layouts, which used to make the public
 // true_byte_upper_bound() throw for a valid layout.  The wrapper reports the canonical empty
 // geometry (0/0/0); byte_size() and the extent marker stay untouched.
@@ -886,7 +886,14 @@ BOOST_AUTO_TEST_CASE(subarray_factory) {
   }));
 
   // Large subsizes must not be truncated to int products. This type is larger than 2 GiB in
-  // byte size and cannot be represented by the old int MPI_Type_size path.
+  // byte size and cannot be represented by the old int MPI_Type_size path.  Intel MPI
+  // 2021.19 aborts inside MPI_Type_commit for this subarray (dataloop commit assertion), so
+  // the provider limitation is documented in COMPATIBILITY.md and the case is skipped there.
+#if defined(I_MPI_VERSION)
+  BOOST_TEST_MESSAGE(
+      "large subarray (INT_MAX x 2) skipped: Intel MPI 2021.19 aborts in MPI_Type_commit "
+      "for the >2 GiB subarray; see COMPATIBILITY.md");
+#else
   mp1::subarray_parameter large_parameter;
   large_parameter.add(INT_MAX, INT_MAX, 0);
   large_parameter.add(2, 1, 0);
@@ -908,6 +915,7 @@ BOOST_AUTO_TEST_CASE(subarray_factory) {
   }
   const raw_datatype raw_large_subarray{commit_raw(raw_large)};
   compare_layout(large_subarray, raw_large_subarray.get(), "subarray(large)");
+#endif
 }
 
 BOOST_AUTO_TEST_CASE(copy_move_and_resize) {
@@ -1279,7 +1287,8 @@ BOOST_AUTO_TEST_CASE(predefined_datatype_rejection) {
     return combiner;
   };
 
-  const auto rejected_and_intact = [&combiner_of](const char* label, MPI_Datatype type) {
+  const auto rejected_and_intact = [&combiner_of](const char* label, MPI_Datatype type,
+                                                  bool allow_undefined_size = false) {
     const int before = combiner_of(type);
     BOOST_TEST_CONTEXT(label) {
       BOOST_TEST(throws_invalid_argument([&] { (void)mp1::layout<int>::from_raw(type, 1); }));
@@ -1288,7 +1297,14 @@ BOOST_AUTO_TEST_CASE(predefined_datatype_rejection) {
       BOOST_TEST(combiner_of(type) == before);
       MPI_Count size = -1;
       require_mpi_ok(MPI_Type_size_c(type, &size), "MPI_Type_size_c(predefined handle)");
-      BOOST_TEST(size > 0);
+      // MPI 4.1 §5.1.5 permits MPI_UNDEFINED only when the OUT parameter cannot express the
+      // size. An F90 handle is provider-conditional: a provider built without Fortran
+      // support may return a non-null handle whose size is MPI_UNDEFINED (Open MPI 6.0.x
+      // --disable-mpi-fortran). Treat that as a build-capability skip of this sanity check;
+      // the rejection/combiners checks and the contiguous-oldtype check below still run.
+      if (not allow_undefined_size or size != MPI_UNDEFINED) {
+        BOOST_TEST(size > 0);
+      }
       MPI_Datatype derived = MPI_DATATYPE_NULL;
       require_mpi_ok(MPI_Type_contiguous_c(1, type, &derived),
                      "MPI_Type_contiguous_c(predefined oldtype)");
@@ -1303,8 +1319,11 @@ BOOST_AUTO_TEST_CASE(predefined_datatype_rejection) {
   rejected_and_intact("MPI_2INT (NAMED)", MPI_2INT);
 
   // Predefined unnamed Fortran datatypes (MPI_COMBINER_F90_*): provider-conditional, because
-  // MPICH 4.3.2 returns MPI_DATATYPE_NULL for these requests while Open MPI 6.0.0rc2 returns
-  // the unnamed handle. A provider without the type is skipped, not asserted away.
+  // MPICH 4.3.2 returns MPI_DATATYPE_NULL for these requests while Open MPI 6.0.x returns
+  // the unnamed handle. A provider without the type is skipped, not asserted away. A C-only
+  // provider build (for example the tarball CI builds) may also return a handle whose
+  // MPI_Type_size_c is MPI_UNDEFINED; that is not a standard size result, but it is an
+  // unsupported configuration, so only the positive-size sanity check is skipped.
   const auto check_f90 = [&combiner_of, &rejected_and_intact](const char* label, int rc,
                                                               MPI_Datatype type,
                                                               int expected_combiner) {
@@ -1314,7 +1333,7 @@ BOOST_AUTO_TEST_CASE(predefined_datatype_rejection) {
     }
     BOOST_TEST_CONTEXT(label) {
       BOOST_TEST(combiner_of(type) == expected_combiner);
-      rejected_and_intact(label, type);
+      rejected_and_intact(label, type, /*allow_undefined_size=*/true);
     }
   };
 
@@ -1332,7 +1351,7 @@ BOOST_AUTO_TEST_CASE(predefined_datatype_rejection) {
 
   // Predefined unnamed value-index pairs (MPI_COMBINER_VALUE_INDEX). A provider may return a
   // named pair for the same (value, index) combination; both are predefined and both must be
-  // rejected. Both pinned providers currently return only named pairs, so the VALUE_INDEX
+  // rejected. The tested providers currently return only named pairs, so the VALUE_INDEX
   // combiner itself is pinned by the static_assert above and the probe log records the skip.
   bool saw_value_index = false;
   const MPI_Datatype value_types[] = {MPI_DOUBLE, MPI_FLOAT, MPI_INT};
@@ -1364,7 +1383,7 @@ BOOST_AUTO_TEST_CASE(value_index_datatype_is_borrowed_and_undecodable) {
   // §6.9.4/MPI_Type_get_value_index say it "is not a duplicate" and "cannot be freed", so a
   // walk that reads it out of MPI_Type_get_contents_c must not free it; it is also not a
   // derived map the layout type-map decoder models, so the decoder fails closed.
-  // The provider may only expose named pairs (both pinned providers do), so the branch is
+  // The provider may only expose named pairs (the tested providers do), so the branch is
   // exercised where a VALUE_INDEX handle exists and skipped otherwise.
   const mp1::context ctx{"test::value_index"};
   const auto combiner_of = [](MPI_Datatype type) {

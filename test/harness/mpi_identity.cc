@@ -49,6 +49,9 @@ namespace {
         std::strstr(library, "mpich") != nullptr) {
       return "MPICH";
     }
+    if (std::strstr(library, "Intel") != nullptr) {
+      return "Intel MPI";
+    }
     return "unknown";
   }
 
@@ -76,8 +79,7 @@ int main(int argc, char** argv) {
   expect(library_length > 0 && library_length <= MPI_MAX_LIBRARY_VERSION_STRING,
          "MPI_Get_library_version length");
   const char* family = family_of(library);
-  expect(std::strcmp(family, "unknown") != 0,
-         "library version names Open MPI or MPICH");
+  expect(std::strcmp(family, "unknown") != 0, "library version names a supported MPI family");
 
   const std::pair<int, int> mp1_version = mp1::get_version();
   expect(mp1_version.first == runtime_major, "mp1::get_version major");

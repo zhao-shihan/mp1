@@ -26,15 +26,15 @@ MATRIX = pathlib.Path(__file__).with_name("mpi-matrix.json")
 FLOOR = "4.1"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 TIERS = {"floor", "stable", "provisional", "rc", "dev"}
-FAMILIES = {"mpich", "openmpi"}
+FAMILIES = {"mpich", "openmpi", "intel"}
+INSTALL_KINDS = {"tarball", "oneapi-apt"}
 REQUIRED_PROVIDER = {
     "id",
     "family",
     "version",
     "tier",
     "advertised_mpi_version",
-    "url",
-    "sha256",
+    "install",
 }
 REQUIRED_PROFILE = {"provider", "name", "build_type"}
 
@@ -52,7 +52,7 @@ def load() -> dict:
     except json.JSONDecodeError as error:
         fail(f"invalid JSON in {MATRIX}: {error}")
 
-    if data.get("schema") != 1:
+    if data.get("schema") != 2:
         fail(f"{MATRIX}: unsupported schema {data.get('schema')!r}")
     if data.get("mpi_floor") != FLOOR:
         fail(f"{MATRIX}: mpi_floor must be {FLOOR!r}")
@@ -72,10 +72,33 @@ def load() -> dict:
             fail(f"{provider['id']}: unknown family {provider['family']!r}")
         if provider["tier"] not in TIERS:
             fail(f"{provider['id']}: unknown tier {provider['tier']!r}")
-        if not provider["url"].startswith("https://"):
-            fail(f"{provider['id']}: url must be https")
-        if not HEX64.match(provider["sha256"]):
-            fail(f"{provider['id']}: sha256 must be 64 lowercase hex digits")
+        install = provider["install"]
+        if install not in INSTALL_KINDS:
+            fail(f"{provider['id']}: unknown install kind {install!r}")
+        if install == "tarball":
+            for field in ("url", "sha256"):
+                if field not in provider:
+                    fail(f"{provider['id']}: tarball provider is missing {field}")
+            if not provider["url"].startswith("https://"):
+                fail(f"{provider['id']}: url must be https")
+            if not HEX64.match(provider["sha256"]):
+                fail(f"{provider['id']}: sha256 must be 64 lowercase hex digits")
+        else:
+            packages = provider.get("apt_packages")
+            if (
+                not isinstance(packages, list)
+                or not packages
+                or not all(isinstance(package, str) and package for package in packages)
+            ):
+                fail(
+                    f"{provider['id']}: oneapi-apt provider needs a non-empty "
+                    "apt_packages list"
+                )
+            if "url" in provider or "sha256" in provider:
+                fail(
+                    f"{provider['id']}: oneapi-apt provider must not carry "
+                    "url/sha256 (it is not a tarball)"
+                )
         if not re.match(r"^[0-9]+(\.[0-9]+)+", provider["advertised_mpi_version"]):
             fail(f"{provider['id']}: advertised_mpi_version is not a version")
 
@@ -162,8 +185,11 @@ def matrix_rows(data: dict, profile: str) -> list:
             "name": entry["name"],
             "mpi": provider["family"],
             "mpi_version": provider["version"],
-            "mpi_sha256": provider["sha256"],
-            "mpi_url": provider["url"],
+            "install": provider["install"],
+            "apt_packages": provider.get("apt_packages", []),
+            "mpi_sha256": provider.get("sha256", ""),
+            "mpi_url": provider.get("url", ""),
+            "runs_on": entry.get("runs_on", provider.get("runs_on", "ubuntu-24.04")),
             "tier": provider["tier"],
             "expected_mpi_version": provider["advertised_mpi_version"],
             "build_type": entry["build_type"],
@@ -194,7 +220,7 @@ def print_text(data: dict, profile: str, rows: list) -> None:
         flags = " ".join(checks) if checks else "-"
         print(
             f"  {row['name']:<38} {row['mpi']:<8} {row['mpi_version']:<10} "
-            f"{row['tier']:<11} {row['build_type']:<8} {flags}"
+            f"{row['install']:<12} {row['tier']:<11} {row['build_type']:<8} {flags}"
         )
 
 
@@ -209,9 +235,9 @@ def check_pin(data: dict, family: str, version: str, sha: str | None) -> None:
             f"pin {family} {version!r} is not in {MATRIX}; update the matrix "
             "instead of adding an unmanaged provider"
         )
-    if sha is not None and matches[0]["sha256"] != sha:
+    if sha is not None and matches[0].get("sha256") != sha:
         fail(
-            f"pin {family} {version} has sha256 {matches[0]['sha256']}, "
+            f"pin {family} {version} has sha256 {matches[0].get('sha256')}, "
             f"not the supplied {sha}"
         )
     print(f"pin ok: {matches[0]['id']} ({matches[0]['tier']})")
@@ -235,6 +261,8 @@ def main() -> int:
             "id",
             "family",
             "version",
+            "install",
+            "apt_packages",
             "sha256",
             "tier",
             "advertised_mpi_version",
@@ -253,7 +281,12 @@ def main() -> int:
         ]
         if not matches:
             fail(f"unknown provider id {args.provider!r}")
-        print(matches[0][args.field])
+        if args.field not in matches[0]:
+            fail(f"provider {args.provider!r} has no field {args.field!r}")
+        value = matches[0][args.field]
+        if isinstance(value, list):
+            value = " ".join(value)
+        print(value)
         return 0
     if args.list:
         for provider in data["providers"]:

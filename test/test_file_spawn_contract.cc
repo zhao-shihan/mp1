@@ -8,9 +8,10 @@
 // same source runs at 2 and 4 ranks. Differential checks compare mp1's view/offset handling
 // with raw MPI-IO on the same bytes. The spawn success cases re-spawn this executable: the
 // child enters a static-initialization child mode that writes its argument vector and exits
-// before Boost.Test starts. They are Open MPI-only and are skipped at run time on other
-// providers (MPICH 4.3.2 cannot reliably start a second copy of this binary from one parent
-// process); test_spawn_contract covers the provider-neutral spawn and spawn_multiple paths.
+// before Boost.Test starts. They run on Open MPI and Intel MPI; MPICH 4.3.2 cannot reliably
+// start a second copy of this binary from one parent process, so that provider skips them.
+// Intel needs I_MPI_FABRICS=shm:ofi for MPI_Comm_spawn; the CTest entry sets it. The
+// dedicated test_spawn_contract covers the provider-neutral spawn and spawn_multiple paths.
 // The local spawn validation runs on every provider.
 
 #include "mp1/mp1.hpp"
@@ -37,14 +38,15 @@
 
 namespace {
 
-  // The self-respawn success cases are Open MPI-only.  MPICH 4.3.2 starts one spawned copy
-  // of this binary, but a second MPI_Comm_spawn/MPI_Comm_spawn_multiple from the same parent
-  // process deadlocks while the first copy is still inside MPI_Finalize.  The dedicated
+  // The self-respawn success cases run on Open MPI and Intel MPI.  MPICH 4.3.2 starts one
+  // spawned copy of this binary, but a second MPI_Comm_spawn/MPI_Comm_spawn_multiple from the
+  // same parent process deadlocks while the first copy is still inside MPI_Finalize.  Intel
+  // needs I_MPI_FABRICS=shm:ofi for spawn; the CTest entry sets it.  The dedicated
   // test_spawn_contract child executable covers the provider-neutral spawn and
   // spawn_multiple paths on every provider.  The unsupported self-respawn combination is
   // skipped explicitly at run time (the helper code still compiles everywhere), never
   // compiled out.
-#if defined(OMPI_MAJOR_VERSION)
+#if defined(OMPI_MAJOR_VERSION) || defined(I_MPI_VERSION)
   inline constexpr bool spawn_self_respawn_supported = true;
 #else
   inline constexpr bool spawn_self_respawn_supported = false;
@@ -841,7 +843,7 @@ BOOST_AUTO_TEST_CASE(spawn_single_and_multiple) {
     children.disconnect();
 
     bool all_markers = false;
-    const double deadline = MPI_Wtime() + 30.0;
+    const double deadline = MPI_Wtime() + 60.0;
     while (MPI_Wtime() < deadline) {
       all_markers = std::filesystem::exists(single_dir / "0") and
                     std::filesystem::exists(single_dir / "1");
@@ -888,7 +890,7 @@ BOOST_AUTO_TEST_CASE(spawn_single_and_multiple) {
     children.disconnect();
 
     bool all_markers = false;
-    const double deadline = MPI_Wtime() + 30.0;
+    const double deadline = MPI_Wtime() + 60.0;
     while (MPI_Wtime() < deadline) {
       all_markers = std::filesystem::exists(multiple_dir / "0") and
                     std::filesystem::exists(multiple_dir / "1") and

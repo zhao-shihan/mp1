@@ -16,11 +16,12 @@
 # registered as a test itself.
 #
 # Labels append to the kind defaults (`unit;mpi` or `scenario;mpi`); they never
-# replace them.  SKIP_RETURN_CODE 77 is attached only when REQUIRES is
-# non-empty: a test with no declared platform requirement can only pass or
-# fail.  A feature listed in MP1_TEST_REQUIRE_FEATURES must be available at
-# configure time (wrap) or is exported as MP1_REQUIRE_<FEATURE>=1 for the
-# declaring tests, so a runtime skip becomes a failure.
+# replace them.  SKIP_RETURN_CODE 77 is attached when REQUIRES is non-empty;
+# a caller that needs a provider-conditional skip may also set the property
+# explicitly (the spawn suite does so).  A feature listed in
+# MP1_TEST_REQUIRE_FEATURES must be available at configure time (wrap) or is
+# exported as MP1_REQUIRE_<FEATURE>=1 for the declaring tests, so a runtime
+# skip becomes a failure.
 #
 # `KIND unit` links the shared `mp1_test_main` static library and
 # `Boost::unit_test_framework`; the test source must not provide main.  `KIND

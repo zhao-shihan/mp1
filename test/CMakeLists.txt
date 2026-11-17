@@ -290,7 +290,12 @@ foreach(source IN LISTS MP1_TEST_SOURCES)
   elseif(name STREQUAL "test_file_collapsed_surface")
     mp1_add_test(NAME "${name}" SOURCE "${source}" LABELS "file")
   elseif(name STREQUAL "test_file_spawn_contract")
-    mp1_add_test(NAME "${name}" SOURCE "${source}" LABELS "file;spawn")
+    # Self-respawn needs a launcher that can start a second copy of this binary. MPICH 4.3.2
+    # cannot; Open MPI and Intel MPI can. Intel needs I_MPI_FABRICS=shm:ofi for spawn, and
+    # dynamic spawn needs oversubscription because the parents already occupy the slots. The
+    # longer timeout covers a cold dynamic spawn; the test is about two seconds when warm.
+    mp1_add_test(NAME "${name}" SOURCE "${source}" LABELS "file;spawn" TIMEOUT 300
+      ENVIRONMENT "I_MPI_FABRICS=shm:ofi;OMPI_MCA_rmaps_base_oversubscribe=1")
   elseif(name STREQUAL "test_spawn_contract")
     # Parent/child two-executable spawn suite (spawn contract): the child program is built by
     # CHILD_SOURCE and its path is passed as the parent test's first argument.  Rank 1 covers
@@ -358,7 +363,7 @@ mp1_add_test(NAME file_external_finalize
 get_property(mp1_spawn_tests DIRECTORY PROPERTY TESTS)
 foreach(test_name IN LISTS mp1_spawn_tests)
   if(test_name MATCHES "^(test_spawn_contract|test_file_spawn_contract)\\.")
-    set_tests_properties("${test_name}" PROPERTIES RUN_SERIAL TRUE)
+    set_tests_properties("${test_name}" PROPERTIES RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
   endif()
 endforeach()
 
@@ -548,6 +553,13 @@ if(MPI_CXX_LIBRARY_VERSION_STRING MATCHES "Open MPI")
   set(MP1_TEST_MPI_EXPECTED_FAMILY "Open MPI")
 elseif(MPI_CXX_LIBRARY_VERSION_STRING MATCHES "MPICH|mpich|Hydra")
   set(MP1_TEST_MPI_EXPECTED_FAMILY "MPICH")
+else()
+  # Intel's MPI_CXX_LIBRARY_VERSION_STRING is empty on some installations; its wrapper
+  # path still identifies the provider.
+  string(TOLOWER "${MPI_CXX_COMPILER}" mp1_mpi_cxx_compiler_lower)
+  if(mp1_mpi_cxx_compiler_lower MATCHES "oneapi|intel|impi")
+    set(MP1_TEST_MPI_EXPECTED_FAMILY "Intel MPI")
+  endif()
 endif()
 mp1_add_test(NAME harness_mpi_identity
   SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/harness/mpi_identity.cc"

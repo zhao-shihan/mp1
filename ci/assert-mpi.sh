@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Assert the MPI implementation on PATH is the one the matrix selected.
 #
-# Usage: ci/assert-mpi.sh <mpich|openmpi> <provider-version> <tier>
+# Usage: ci/assert-mpi.sh <mpich|openmpi|intel> <provider-version> <tier>
 #
 # Checks, in this order:
 #   1. mpicxx and mpiexec are both on PATH and in the same directory;
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
-  printf 'usage: %s <mpich|openmpi> <provider-version> <tier>\n' "${0##*/}" >&2
+  printf 'usage: %s <mpich|openmpi|intel> <provider-version> <tier>\n' "${0##*/}" >&2
   exit 2
 fi
 
@@ -31,6 +31,7 @@ tier=$3
 case "${family}" in
   openmpi) expected_family='Open MPI' ;;
   mpich) expected_family='MPICH' ;;
+  intel) expected_family='Intel' ;;
   *)
     printf 'assert-mpi: unknown family: %s\n' "${family}" >&2
     exit 2
@@ -69,6 +70,10 @@ case "${family}" in
   mpich)
     grep -qiE 'MPICH|Hydra' <<<"${launcher_version}" ||
       fail "mpiexec does not identify as MPICH/Hydra: ${launcher_version}"
+    ;;
+  intel)
+    grep -qi 'Intel' <<<"${launcher_version}" ||
+      fail "mpiexec does not identify as Intel MPI: ${launcher_version}"
     ;;
 esac
 grep -qF "${version}" <<<"${launcher_version}" ||
@@ -123,6 +128,27 @@ version_ge "${runtime_version}" "4.1" ||
 if [[ "${tier}" == "floor" ]]; then
   [[ "${runtime_version}" == "4.1" ]] ||
     fail "floor provider must advertise exactly MPI 4.1, got ${runtime_version}"
+fi
+
+if [[ ${family} == intel ]]; then
+  # I_MPI_FABRICS=shm:ofi is required by the spawn tests, and Intel MPI's own vars.sh does
+  # not put the bundled libfabric on the loader path.  Catch that early instead of letting
+  # the first MPI_Init fail inside CTest.
+  cat >"${tmp}/init_probe.cc" <<'EOF'
+#include <mpi.h>
+int main(int argc, char** argv) {
+  if (MPI_Init(&argc, &argv) != MPI_SUCCESS)
+    return 1;
+  if (MPI_Finalize() != MPI_SUCCESS)
+    return 2;
+  return 0;
+}
+EOF
+  "${mpicxx_path}" -std=c++20 -o "${tmp}/init_probe" "${tmp}/init_probe.cc"
+  if ! I_MPI_FABRICS=shm:ofi "${mpiexec_path}" -n 1 "${tmp}/init_probe" >/dev/null 2>&1; then
+    fail "Intel MPI OFI smoke failed: I_MPI_FABRICS=shm:ofi cannot initialize; source the \
+oneAPI libfabric env (ci/mpi-env.sh does this) and check FI_PROVIDER_PATH"
+  fi
 fi
 
 printf 'assert-mpi: PASS %s %s (tier %s, advertises MPI %s)\n' \

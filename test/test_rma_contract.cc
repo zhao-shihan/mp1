@@ -499,12 +499,20 @@ BOOST_AUTO_TEST_CASE(window_info_accessors) {
 
 BOOST_AUTO_TEST_CASE(window_shared_query_flavors) {
   const mp1::mpi_communicator c = world();
-  const int rank = c.rank();
+  [[maybe_unused]] const int rank = c.rank();
 
   // MPI 4.1: shared_query is legal on ALLOCATE (and CREATE), not only on shared windows.
   {
     mp1::window w =
         mp1::window::allocate(c, {.size = 4 * sizeof(int), .disp_unit = sizeof(int)});
+#if defined(I_MPI_VERSION)
+    // Intel MPI 2021.19 aborts with "Incorrect window flavor ... expected
+    // !MPI_WIN_FLAVOR_DYNAMIC" even for the ALLOCATE and CREATE windows that MPI 4.1
+    // permits.  Keep the local rank rejection below and skip only the success queries.
+    BOOST_TEST_MESSAGE(
+        "ALLOCATE/CREATE shared_query success queries skipped: Intel MPI 2021.19 rejects "
+        "them; local rank and DYNAMIC validation still run (see COMPATIBILITY.md)");
+#else
     mp1::shared_segment self = w.shared_query(rank);
     BOOST_TEST(self.size >= 0);
     if (self.size > 0) {
@@ -513,11 +521,13 @@ BOOST_AUTO_TEST_CASE(window_shared_query_flavors) {
     }
     mp1::shared_segment any = w.shared_query(MPI_PROC_NULL);
     BOOST_TEST(any.size >= 0);
+#endif
     BOOST_TEST(throws_invalid([&] { (void)w.shared_query(-3); }));
     BOOST_TEST(throws_invalid([&] { (void)w.shared_query(c.size()); }));
     w.free();
   }
 
+#if !defined(I_MPI_VERSION)
   // CREATE windows may also be queried under MPI 4.1; no shared memory is required.
   {
     std::vector<int> buffer(4, rank);
@@ -529,6 +539,7 @@ BOOST_AUTO_TEST_CASE(window_shared_query_flavors) {
     BOOST_TEST(self.size >= 0);
     w.free();
   }
+#endif
 
   // DYNAMIC is the one flavor rejected by MPI 4.1; reject it locally (OpenMPI is too lenient).
   {
@@ -1542,8 +1553,22 @@ BOOST_AUTO_TEST_CASE(custom_predefined_trait_classified_before_mpi) {
               mp1::detail::rma_datatype_category::c_integer));
   BOOST_TEST((mp1::detail::rma_datatype_category_of<rma_custom_bool>() ==
               mp1::detail::rma_datatype_category::invalid));
-  BOOST_TEST((mp1::detail::rma_datatype_category_of<rma_fortran_int>() ==
-              mp1::detail::rma_datatype_category::invalid));
+  // Open MPI built without Fortran support exposes MPI_INTEGER with zero extent; the
+  // native_datatype<T>() validator then rejects the trait before the category classifier.
+  // That is still a fail-closed rejection, but it is not the category path.
+  MPI_Aint fortran_lb = 0;
+  MPI_Aint fortran_extent = 0;
+  BOOST_REQUIRE(MPI_Type_get_extent(MPI_INTEGER, &fortran_lb, &fortran_extent) == MPI_SUCCESS);
+  if (fortran_extent == 0) {
+    BOOST_TEST_MESSAGE(
+        "rma_fortran_int category check skipped: MPI_INTEGER has zero extent on this "
+        "C-only provider; native_datatype validation rejects the trait first");
+    BOOST_TEST(throws_invalid(
+        [&] { (void)mp1::detail::rma_datatype_category_of<rma_fortran_int>(); }));
+  } else {
+    BOOST_TEST((mp1::detail::rma_datatype_category_of<rma_fortran_int>() ==
+                mp1::detail::rma_datatype_category::invalid));
+  }
   BOOST_TEST(throws_invalid([&] { (void)mp1::predefined_op<rma_custom_bool>{MPI_LAND}; }));
   BOOST_TEST(throws_invalid([&] { (void)mp1::predefined_op<rma_fortran_int>{MPI_SUM}; }));
 }

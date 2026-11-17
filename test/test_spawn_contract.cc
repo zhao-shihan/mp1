@@ -18,8 +18,8 @@
 //
 // This scenario covers the single `spawn_options` form and the `spawn_multiple_options`
 // builder form.  The soft-spawn clause ("a soft spawn is a success with a smaller
-// remote_size()") is unobservable on both pinned providers: an independent probe with info
-// soft="0:1", maxprocs=2 hard-spawns 2 processes on Open MPI 6.0.0rc2 and MPICH 4.3.2
+// remote_size()") is unobservable on Open MPI 6.0.x and MPICH 4.3.2: an independent probe with
+// info soft="0:1", maxprocs=2 hard-spawns 2 processes on Open MPI 6.0.x and MPICH 4.3.2
 // (remote_size == 2).  The success path is still exercised; only the size reduction is
 // provider-contingent, so the clause is documented here rather than asserted falsely.
 //
@@ -156,6 +156,19 @@ int main(int argc, char* argv[]) {
       MP1_CHECK(copy.size() == 2);
       MP1_CHECK(copy.maxprocs()[1] == 1);
     }
+
+#if defined(I_MPI_VERSION)
+    // The provider-independent option payload checks above already ran.  Intel MPI 2021.19
+    // hangs in the two-executable spawn below even with I_MPI_FABRICS=shm:ofi; the
+    // self-respawn file scenario covers MPI_Comm_spawn on Intel.
+    if (failures != 0)
+      return 1;
+    mp1::finalize();
+    std::fprintf(stderr,
+                 "test_spawn_contract: skipped on Intel MPI 2021.19 (two-executable spawn "
+                 "hangs); see COMPATIBILITY.md\n");
+    return 77;
+#endif
 
     // ---- 1. RAII pair: both ends disconnect from their destructors ----------------------
     reset_calls();

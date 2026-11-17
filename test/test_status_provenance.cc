@@ -177,6 +177,11 @@ BOOST_AUTO_TEST_CASE(send_request_status_has_no_count) {
   BOOST_TEST(MPI_Irecv(&received, 1, MPI_INT, 0, 70, MPI_COMM_SELF, &recv_raw) == MPI_SUCCESS);
   mp1::request send_request = mp1::isend(self, value, 0, mp1::tag{70});
   const mp1::status sent = send_request.wait();
+  // A standard send completes when the sender's buffer is reusable; the matching receive is
+  // not necessarily complete yet (Intel MPI can return before the receive lands). Wait for
+  // the posted receive before inspecting the payload.
+  MPI_Status recv_status{};
+  BOOST_TEST(MPI_Wait(&recv_raw, &recv_status) == MPI_SUCCESS);
   BOOST_TEST(received == 7);
   expect_any_envelope(sent);
   BOOST_TEST(sent.get_count<int>() == 0);
@@ -190,8 +195,6 @@ BOOST_AUTO_TEST_CASE(send_request_status_has_no_count) {
   }
 #endif
 
-  MPI_Status recv_status{};
-  BOOST_TEST(MPI_Wait(&recv_raw, &recv_status) == MPI_SUCCESS);
   BOOST_TEST(recv_status.MPI_TAG == 70);
 }
 
@@ -274,7 +277,7 @@ BOOST_AUTO_TEST_CASE(file_status_count_is_defined_and_envelope_normalized) {
     BOOST_TEST(async_readback[1] == 22);
     BOOST_TEST(async_status.get_count<int>() == 2);
     expect_any_envelope(async_status);
-    // Open MPI 6.0.0rc2 leaves the cancellation flag uninitialized for a nonblocking file
+    // Open MPI 6.0.x leaves the cancellation flag uninitialized for a nonblocking file
     // request, so no value is asserted for the real path; the query must merely be available.
     (void)async_status.is_cancelled();
 

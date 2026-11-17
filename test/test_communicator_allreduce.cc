@@ -6,6 +6,7 @@
 #include <boost/test/unit_test.hpp>
 #include <cstddef>
 #include <functional>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -233,16 +234,36 @@ BOOST_AUTO_TEST_CASE(allreduce_scalar_and_operators) {
   static_assert(
       not mp1::detail::is_predefined_reduction_functor_v<allreduce_fortran_int,
                                                          std::plus<allreduce_fortran_int>>);
-  const int fortran_expected = size * (size + 1) / 2;
-  allreduce_fortran_int raw_in{rank + 1};
-  allreduce_fortran_int raw_out{};
-  mp1::allreduce(comm, MPI_SUM, raw_in, raw_out);
-  BOOST_TEST(raw_out.value == fortran_expected);
+  // Open MPI built without Fortran support exposes MPI_INTEGER with zero extent; the
+  // native_datatype<T>() validator rejects the trait before the reduction call.  That is a
+  // fail-closed rejection, not a usable wire type in this configuration.
+  MPI_Aint fortran_lb = 0;
+  MPI_Aint fortran_extent = 0;
+  BOOST_REQUIRE(MPI_Type_get_extent(MPI_INTEGER, &fortran_lb, &fortran_extent) == MPI_SUCCESS);
+  if (fortran_extent == 0) {
+    BOOST_TEST_MESSAGE(
+        "allreduce_fortran_int data movement skipped: MPI_INTEGER has zero extent on this "
+        "C-only provider; native_datatype validation rejects the trait first");
+    allreduce_fortran_int raw_in{rank + 1};
+    allreduce_fortran_int raw_out{};
+    BOOST_CHECK_THROW(mp1::allreduce(comm, MPI_SUM, raw_in, raw_out), std::invalid_argument);
+    allreduce_fortran_int callback_in{rank + 1};
+    allreduce_fortran_int callback_out{};
+    BOOST_CHECK_THROW(
+        mp1::allreduce(comm, std::plus<allreduce_fortran_int>{}, callback_in, callback_out),
+        std::invalid_argument);
+  } else {
+    const int fortran_expected = size * (size + 1) / 2;
+    allreduce_fortran_int raw_in{rank + 1};
+    allreduce_fortran_int raw_out{};
+    mp1::allreduce(comm, MPI_SUM, raw_in, raw_out);
+    BOOST_TEST(raw_out.value == fortran_expected);
 
-  allreduce_fortran_int callback_in{rank + 1};
-  allreduce_fortran_int callback_out{};
-  mp1::allreduce(comm, std::plus<allreduce_fortran_int>{}, callback_in, callback_out);
-  BOOST_TEST(callback_out.value == fortran_expected);
+    allreduce_fortran_int callback_in{rank + 1};
+    allreduce_fortran_int callback_out{};
+    mp1::allreduce(comm, std::plus<allreduce_fortran_int>{}, callback_in, callback_out);
+    BOOST_TEST(callback_out.value == fortran_expected);
+  }
 
   // The adapter must select the predefined handles, not just produce the right result.
   BOOST_TEST((mp1::detail::predefined_mpi_op<int, std::plus<int>>() == MPI_SUM));
