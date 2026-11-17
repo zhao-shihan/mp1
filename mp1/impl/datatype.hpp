@@ -42,23 +42,24 @@ namespace mp1 {
     // file-view etype to be monotone; only the proven violation is rejected locally.
     enum class type_map_order : unsigned char { monotone, non_monotone, unknown };
 
-    // The predefined basic-type groups of MPI 4.1 §6.9.2 (Predefined Reduction Operations)
-    // plus the categories MPI_COMPARE_AND_SWAP names in §12.3.4 (Compare and Swap). The
-    // category is a property of the MPI basic datatype, not of a C++ type: enums follow
+    // The C++ categories of the MPI 4.1 §6.9.2 (Predefined Reduction Operations) and
+    // §12.3.4 (Compare and Swap) datatype groups, plus Character for MPI_CHAR/MPI_WCHAR.
+    // The C-only and Fortran datatype variants (MPI_C_BOOL, MPI_C_*_COMPLEX, MPI_INTEGER,
+    // ...) and the multi-language types are out of scope and classify as invalid.
+    // The category is a property of the MPI basic datatype, not of a C++ type: enums follow
     // their underlying type, char16_t/char32_t follow the uint_leastN_t datatype they map
     // to, and a custom MP1_DATATYPE_TRAITS mapping is classified from the actual handle
     // (with MPI_Type_get_envelope, §5.1.13) before the first RMA call that needs it.
     enum class rma_datatype_category : unsigned char {
-      derived,          // any derived datatype; not a basic predefined type
-      c_integer,        // MPI 4.1 §6.9.2 "C integer"
-      fortran_integer,  // §6.9.2 "Fortran integer" (no mp1 element type maps here)
-      floating,         // §6.9.2 "Floating point"
-      logical,          // §6.9.2 "Logical" (MPI_CXX_BOOL for bool)
-      complex,          // §6.9.2 "Complex"
-      byte,             // §6.9.2 "Byte" (MPI_BYTE)
-      character,        // MPI_CHAR / MPI_WCHAR; not a reduction or CAS category (§6.9.3)
-      multi_language,   // §6.9.2 "Multi-language types" (MPI_AINT/MPI_OFFSET/MPI_COUNT)
-      invalid           // not a usable predefined datatype
+      derived,         // any derived datatype; not a basic predefined type
+      c_integer,       // MPI 4.1 §6.9.2 "C integer" (the C++ integers use the same handles)
+      floating_point,  // §6.9.2 "Floating point"
+      logical,         // §6.9.2 "Logical" (MPI_CXX_BOOL for bool)
+      complex,         // §6.9.2 "Complex" (MPI_CXX_*_COMPLEX for std::complex)
+      byte,            // §6.9.2 "Byte" (MPI_BYTE)
+      character,       // MPI_CHAR / MPI_WCHAR; not a reduction or CAS category (§6.9.3)
+      invalid          // not a usable predefined C++ datatype (C-only or Fortran
+                       // datatypes, multi-language types, vendor types, ...)
     };
 
     // Structural facts recorded by the construction algebra. Geometry (size/extent/true
@@ -706,6 +707,13 @@ namespace mp1 {
       return value;
     }
 
+    // True when datatype_traits<T> is an explicit user customization (the MP1_DATATYPE_TRAITS
+    // and MP1_DATATYPE_TRAITS_PACKED macros).  An explicit mapping on an enum overrides the
+    // underlying-type default, so the compile-time category must not be derived from the
+    // underlying type; it is classified from the actual handle at run time instead.
+    template<class T>
+    struct explicit_datatype_traits : std::false_type {};
+
     // SFINAE access to datatype_traits<T>::is_predefined. A hand-written trait without the
     // marker is conservatively treated as derived, never as predefined.
     template<class T, class = void>
@@ -737,7 +745,14 @@ namespace mp1 {
       if constexpr (std::is_same_v<U, std::byte>) {
         return rma_datatype_category::byte;
       } else if constexpr (std::is_enum_v<U>) {
-        return static_rma_category<std::underlying_type_t<U>>();
+        // A plain enum borrows its underlying type's category.  An explicit macro mapping
+        // overrides that default, so its handle is classified at run time (invalid) instead of
+        // guessing the underlying category.
+        if constexpr (explicit_datatype_traits<U>::value) {
+          return rma_datatype_category::invalid;
+        } else {
+          return static_rma_category<std::underlying_type_t<U>>();
+        }
       } else if constexpr (std::is_same_v<U, char> or std::is_same_v<U, wchar_t>) {
         return rma_datatype_category::character;
       } else if constexpr (std::is_same_v<U, bool>) {
@@ -750,7 +765,7 @@ namespace mp1 {
       } else if constexpr (std::is_integral_v<U>) {
         return rma_datatype_category::c_integer;
       } else if constexpr (std::is_floating_point_v<U>) {
-        return rma_datatype_category::floating;
+        return rma_datatype_category::floating_point;
       } else if constexpr (not predefined_datatype_marker<U>::value) {
         return rma_datatype_category::derived;
       } else {
@@ -779,19 +794,14 @@ namespace mp1 {
 
       if (type == MPI_BYTE)
         return rma_datatype_category::byte;
-      if (type == MPI_C_BOOL or type == MPI_CXX_BOOL or type == MPI_LOGICAL)
+      if (type == MPI_CXX_BOOL)
         return rma_datatype_category::logical;
       if (type == MPI_CHAR or type == MPI_WCHAR)
         return rma_datatype_category::character;
-      if (type == MPI_AINT or type == MPI_OFFSET or type == MPI_COUNT)
-        return rma_datatype_category::multi_language;
-      if (type == MPI_FLOAT or type == MPI_DOUBLE or type == MPI_LONG_DOUBLE or
-          type == MPI_REAL or type == MPI_DOUBLE_PRECISION)
-        return rma_datatype_category::floating;
-      if (type == MPI_C_FLOAT_COMPLEX or type == MPI_C_DOUBLE_COMPLEX or
-          type == MPI_C_LONG_DOUBLE_COMPLEX or type == MPI_CXX_FLOAT_COMPLEX or
-          type == MPI_CXX_DOUBLE_COMPLEX or type == MPI_CXX_LONG_DOUBLE_COMPLEX or
-          type == MPI_COMPLEX or type == MPI_DOUBLE_COMPLEX)
+      if (type == MPI_FLOAT or type == MPI_DOUBLE or type == MPI_LONG_DOUBLE)
+        return rma_datatype_category::floating_point;
+      if (type == MPI_CXX_FLOAT_COMPLEX or type == MPI_CXX_DOUBLE_COMPLEX or
+          type == MPI_CXX_LONG_DOUBLE_COMPLEX)
         return rma_datatype_category::complex;
       if (type == MPI_INT or type == MPI_LONG or type == MPI_SHORT or
           type == MPI_UNSIGNED_SHORT or type == MPI_UNSIGNED or type == MPI_UNSIGNED_LONG or
@@ -801,11 +811,11 @@ namespace mp1 {
           type == MPI_UINT8_T or type == MPI_UINT16_T or type == MPI_UINT32_T or
           type == MPI_UINT64_T)
         return rma_datatype_category::c_integer;
-      if (type == MPI_INTEGER)
-        return rma_datatype_category::fortran_integer;
-
-      // A named handle that mp1 does not model (for example a vendor basic type or a Fortran
-      // category). It is a predefined datatype but not one the typed boundary can classify.
+      // A named handle that mp1 does not model: a C or Fortran variant where the C++ datatype
+      // is the one mp1 maps (MPI_C_BOOL, MPI_C_*_COMPLEX, MPI_LOGICAL, MPI_REAL,
+      // MPI_DOUBLE_PRECISION, MPI_COMPLEX, MPI_INTEGER), a multi-language datatype
+      // (MPI_AINT, MPI_OFFSET, MPI_COUNT), or a vendor basic type.  It is a predefined
+      // datatype, but not one the C++ typed surface classifies.
       return rma_datatype_category::invalid;
     }
 
@@ -1175,6 +1185,10 @@ namespace mp1 {
         return mpi_type;                                                  \
       }                                                                   \
     };                                                                    \
+    namespace detail {                                                    \
+      template<>                                                          \
+      struct explicit_datatype_traits<type> : std::true_type {};          \
+    }                                                                     \
   }
 
 // MP1_DATATYPE_TRAITS_PACKED is the opt-in form for a custom trait whose datatype is derived
@@ -1194,6 +1208,10 @@ namespace mp1 {
         return mpi_type;                                                  \
       }                                                                   \
     };                                                                    \
+    namespace detail {                                                    \
+      template<>                                                          \
+      struct explicit_datatype_traits<type> : std::true_type {};          \
+    }                                                                     \
   }
 
 // MP1_DATATYPE_BASIC(T, U) is the opt-in basic-component annotation for a custom

@@ -77,15 +77,15 @@ families × 3 lifetimes; 5 blocking and 4 nonblocking/persistent receive
 policies; 42 RMA origin/result/target shapes; 129 file declarations, of which
 96 are data access; and the per-family descriptors in §§2–7.
 
-The complete verification suite is **293** non-nightly CTest entries in the
-default configuration (**294** with `MP1_TEST_EXTRA_RANKS=ON`, which adds the
-5-rank persistent-collective entry), **97** of which are compile-fail entries
-(**95** contract probes + 2 harness self-checks), plus **63** compile-pass
+The complete verification suite is **292** non-nightly CTest entries in the
+default configuration (**293** with `MP1_TEST_EXTRA_RANKS=ON`, which adds the
+5-rank persistent-collective entry), **96** of which are compile-fail entries
+(**94** contract probes + 2 harness self-checks), plus **64** compile-pass
 controls and **9** compile-all API sources. The tree has **90** unit-test
 sources with **509** Boost test cases; the full build compiles **279** C++20
 translation units and has **416** build edges when tests, examples and perf are
 enabled (the release build enables `MP1_BUILD_PERF`, whose `perf_calls` gate is
-one of the 293 entries); the wrap-coverage gate covers **177** MPI symbols
+one of the 292 entries); the wrap-coverage gate covers **177** MPI symbols
 across 34 implementation files.
 
 ## How to read this matrix
@@ -436,20 +436,24 @@ comparison, but its displacement must still be non-negative and representable.
 | mp1-managed functor | committed resized image of the native typed map shifted to true lb 0; typed leaves, extent `sizeof(T)`; buffer pointer shifted by the native true lb | one complete `T` per element; only the native type-map bytes are transmitted; padding and unlisted members are not; `reduce_scatter[_block]` requires true lower bound 0 and true extent `sizeof(T)` |
 | raw `MPI_Op` (predefined or caller-created) | `native_datatype<T>()` | the callback must honor the datatype's true lower bound and type map |
 
-The logical functors keep the callback path where MPI's integer
-`MPI_LAND`/`MPI_LOR`/`MPI_LXOR` result is not reliably normalized to 0/1.
-Floating-point `max`/`min` also keep the callback path in collectives because
-MPI leaves NaN behavior unspecified; they are created with `commute = 0`
-(floating max/min is not commutative under the callback with NaN), as are
-user-defined types. The `mp1::op_traits` truth table is integral-only for
-`mp1::max`/`min`, arithmetic for `std::plus`/`std::multiplies`/
-`std::logical_and`/`std::logical_or` and `mp1::logical_xor`, float-only for the
-explicit `std::complex` specializations, and integral-or-`std::byte` for
-`std::bit_*`; the user `commutative_op` tag remains the opt-in. A managed
-callback requires a stateless, nothrow-invocable functor and a trivially
-copyable `T`; the functor must not inspect padding or unlisted members. An
-over-aligned `T` (`alignof(T) > alignof(std::max_align_t)`) is
-unsupported for user-functor reductions.
+The mapping is MPI 4.1 §6.9.2 itself: `std::plus`/`std::multiplies` map for C
+integer, floating and `std::complex`; `mp1::max`/`mp1::min` for C integer and
+floating; `std::bit_*` for C integer and `std::byte`; `std::logical_*` and
+`mp1::logical_xor` for C integer and `bool`. The C++ datatypes are
+`MPI_CXX_BOOL` and `MPI_CXX_*_COMPLEX`; the Fortran integer and multi-language
+categories are not reachable from a C++ element type. The predefined
+operation's result semantics are MPI's: floating `max`/`min` NaN behavior and
+the integer logical result value are whatever MPI's operation does. A pair
+outside the row uses the managed callback, which requires a stateless,
+nothrow-invocable functor and a trivially copyable `T`; the functor must not
+inspect padding or unlisted members, and an over-aligned `T` (`alignof(T) >
+alignof(std::max_align_t)`) is unsupported on that path. The `mp1::op_traits`
+truth table is integral-only for `mp1::max`/`min`, arithmetic for
+`std::plus`/`std::multiplies`/`std::logical_and`/`std::logical_or` and
+`mp1::logical_xor`, float-only for the explicit `std::complex`
+specializations, and integral-or-`std::byte` for `std::bit_*`; the user
+`commutative_op` tag remains the opt-in. The trait is consulted only on the
+callback path; a mapped §6.9.2 pair never creates an `MPI_Op`.
 
 The standard-library functors are the general reduction surface: `std::plus`,
 `std::multiplies`, `std::bit_and`, `std::bit_or`, `std::bit_xor`,
@@ -457,7 +461,10 @@ The standard-library functors are the general reduction surface: `std::plus`,
 specializations) are accepted as reduction operators and select the same
 predefined `MPI_Op` where the operation/type pair is mappable, and the callback
 otherwise. `mp1::max`, `mp1::min` and `mp1::logical_xor` are the only mp1
-functor names; they have no standard-library object equivalent. The built-in
+functor names; they have no standard-library object equivalent. Their element
+type defaults to `void`, so the transparent spellings `mp1::max{}`,
+`mp1::min{}` and `mp1::logical_xor{}` deduce the operand from the reduction
+element type (the typed `mp1::max<T>{}` spelling is unchanged). The built-in
 functor surface is those three mp1 names plus the seven standard-library
 functors; any other stateless, nothrow-invocable `T` functor uses the managed
 callback path.
@@ -467,9 +474,18 @@ it. The trait is conditional on the operand type (integral for
 `mp1::max`/`min`, arithmetic for `std::plus`/`std::multiplies`/
 `std::logical_and`/`std::logical_or` and `mp1::logical_xor`, float-only for the
 explicit `std::complex` specializations, and integral or `std::byte` for
-`std::bit_*`); floating `max`/`min`, logical functors on non-arithmetic types
-and user-defined operand types are created with `commute = 0` unless the user
-opts in with `commutative_op` or an `op_traits` specialization.
+`std::bit_*`); a callback-only pair -- `mp1::max`/`min` on a character or
+`Logical` element, a floating-point logical functor, a user-defined operand
+type -- is created with that value (`commute = 0` where the C++ operation is
+not commutative) unless the user opts in with `commutative_op` or an
+`op_traits` specialization. For a callback-only pair, the transparent spellings the
+library classifies (the `std::plus`/`multiplies`/`equal_to`/`not_equal_to`/
+`logical_and`/`logical_or`/`bit_*` `void` specializations and
+`mp1::max<>`/`mp1::min<>`/`mp1::logical_xor<>`) are classified by substituting
+the reduction element type into the same `op_traits` row as the typed spelling,
+so the two spellings cannot disagree; a mapped pair never consults the trait.
+The transparent type alone is `false` (`op_traits<mp1::max<>>`,
+`op_traits<std::plus<void>>`) unless the user specializes it.
 
 In-place rules:
 
@@ -604,11 +620,17 @@ aggregate spelling is a compile-time error. The typed functor mapping is:
 | `std::plus`/`std::multiplies` | `MPI_SUM`/`MPI_PROD` | C integer, floating, complex |
 | `mp1::max`/`mp1::min` | `MPI_MAX`/`MPI_MIN` | C integer, floating |
 | `std::bit_and`/`std::bit_or`/`std::bit_xor` | `MPI_BAND`/`MPI_BOR`/`MPI_BXOR` | C integer, `std::byte` |
-| `std::logical_and`/`std::logical_or`/`mp1::logical_xor` | `MPI_LAND`/`MPI_LOR`/`MPI_LXOR` | `bool` |
+| `std::logical_and`/`std::logical_or`/`mp1::logical_xor` | `MPI_LAND`/`MPI_LOR`/`MPI_LXOR` | C integer, `bool` |
 
-The typed functor gate is narrower than MPI's predefined table: it does not
-map the Fortran or multi-language categories. A raw predefined `MPI_Op` may
-use those categories where MPI defines them (see the raw-handle rule).
+The typed functor gate covers the C++ datatype categories only: `bool` is
+`MPI_CXX_BOOL` and `std::complex<T>` is `MPI_CXX_*_COMPLEX`; the Fortran
+integer and multi-language categories are not reachable from a C++ element
+type. A raw predefined `MPI_Op` is validated against the same C++ category
+row; a C or Fortran datatype variant or a multi-language category is rejected
+before the MPI call (see the raw-handle rule). The mp1 functors default their element type to
+`void`, so `mp1::max{}`, `mp1::min{}` and `mp1::logical_xor{}` are accepted in
+the same positions and classified from `U`; `predefined_op<U>`'s functor
+constructor applies the same gate.
 
 A raw `MPI_Op` must be a standard predefined handle valid for `U`'s datatype
 category; user handles, `MPI_OP_NULL`, `MPI_MAXLOC`/`MPI_MINLOC` and category
@@ -616,10 +638,8 @@ mismatches throw `std::invalid_argument` before MPI. Mixed, empty and opaque
 types are compile-time errors. `MPI_REPLACE` is accepted in every accumulating
 family for a predefined or homogeneous-derived `T`; `MPI_NO_OP` is accepted
 only in `get_accumulate`, `rget_accumulate` and `fetch_and_op`.
-`compare_and_swap` requires a predefined C integer, Fortran integer, Logical,
-Multi-language or Byte type.
-
-Atomicity is per basic element. The `accumulate_ops` window info key defaults
+`compare_and_swap` requires a predefined C++ type in the C integer, Logical or
+Byte category. Atomicity is per basic element. The `accumulate_ops` window info key defaults
 to `same_op_no_op`, so concurrent accumulates to the same target address must
 use the same operator or `MPI_NO_OP`.
 
@@ -870,18 +890,19 @@ byte-contiguous mapping macro.
 ### 7.3 Operator
 
 Public mp1 reduction functors: `max`, `min` and `logical_xor` (each template on
-the element type). The standard-library `plus`, `multiplies`, `bit_and`,
-`bit_or`, `bit_xor`, `logical_and` and `logical_or` functors (including `void`
-specializations) are accepted and map identically, so they are the general
-typed reduction surface; `max`, `min` and `logical_xor` have no
-standard-library object equivalent and remain mp1-only. The operator header
-also provides the `commutative_op` user opt-in tag, `op_traits<F>` with the
-explicit built-in truth table, and `predefined_op<T>` with `element_type`,
-`native_handle()` and `is_no_op()`. The managed callback functor contract is:
-empty/stateless, nothrow-invocable for `T`, immutable, no MPI calls, and no
-access to padding or unlisted members. `op_traits<F>::is_commutative` is
-consulted only for the `commute` argument of `MPI_Op_create` on that callback
-path.
+the element type, defaulted to `void`; `mp1::max{}` is the transparent spelling
+that deduces its operands and `mp1::max<T>{}` fixes them). The standard-library
+`plus`, `multiplies`, `bit_and`, `bit_or`, `bit_xor`, `logical_and` and
+`logical_or` functors (including `void` specializations) are accepted and map
+identically, so they are the general typed reduction surface; `max`, `min` and
+`logical_xor` have no standard-library object equivalent and remain mp1-only.
+The operator header also provides the `commutative_op` user opt-in tag,
+`op_traits<F>` with the explicit built-in truth table, and `predefined_op<T>`
+with `element_type`, `native_handle()` and `is_no_op()`. The managed callback
+functor contract is: empty/stateless, nothrow-invocable for `T`, immutable, no
+MPI calls, and no access to padding or unlisted members.
+`op_traits<F>::is_commutative` is consulted only for the `commute` argument of
+`MPI_Op_create` on that callback path.
 
 ### 7.4 Public constants
 

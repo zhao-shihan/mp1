@@ -74,9 +74,9 @@
 // and Compare and Swap require the origin and result buffers to be disjoint (§12.3.4);
 // the both-flat form checks the byte range before the MPI call, while a mixed
 // flat/layout or layout/layout pair leaves overlap across the distinct buffers/layout objects
-// to the caller. compare_and_swap requires a predefined datatype in the C integer, Fortran
-// integer, Logical, Multi-language or Byte category (§12.3.4 Compare and Swap); double, float,
-// complex, char/wchar_t and derived types are rejected.  For an untrusted
+// to the caller. compare_and_swap requires a predefined C++ datatype in the C integer,
+// Logical or Byte category (§12.3.4 Compare and Swap); double, float, complex, char/wchar_t
+// and derived types are rejected.  For an untrusted
 // MP1_DATATYPE_BASIC(T,U) or a manual struct_builder<T>::component_types annotation, the
 // committed datatype is validated once before the first accumulating call, because mp1 did not
 // synthesize it from the listed members.  A span origin is native_datatype<T>(); a region
@@ -407,8 +407,8 @@ namespace mp1 {
   // -----------------------------------------------------------------------------------------
 
   /// MPI_Compare_and_swap; single element (no count or layout overloads).  T must be a
-  /// predefined datatype in the C integer, Fortran integer, Logical, Multi-language or Byte
-  /// category (MPI 4.1 §12.3.4 Compare and Swap).  Origin and result must be disjoint; the
+  /// predefined C++ datatype in the C integer, Logical or Byte category (MPI 4.1 §12.3.4
+  /// Compare and Swap).  Origin and result must be disjoint; the
   /// compare buffer is a separate read-only input, not part of that pairwise rule.  The flat
   /// origin/result overlap is checked before the MPI call.
   template<class T>

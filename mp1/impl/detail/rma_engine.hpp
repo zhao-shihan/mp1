@@ -39,9 +39,8 @@
 //     operator is checked against basic_component_t<T>, and an untrusted custom/manual
 //     annotation is validated once against its committed datatype before the first call;
 //   * fetch_and_op requires a predefined datatype and operator (§12.3.4 Fetch and Op);
-//   * compare_and_swap requires a predefined datatype in the C integer, Fortran integer,
-//     Logical, Multi-language or Byte categories (§12.3.4 Compare and Swap and §6.9.2
-//     Predefined Reduction Operations);
+//   * compare_and_swap requires a predefined C++ datatype in the C integer, Logical or Byte
+//     categories (§12.3.4 Compare and Swap and §6.9.2 Predefined Reduction Operations);
 //   * MPI_PROC_NULL is a valid target rank for the ten RMA communication calls (§12.3
 //     Communication Calls); lock/unlock/flush keep requiring a non-negative window rank
 //     (§12.5.3 Lock, §12.5.4 Flush and Sync).
@@ -143,15 +142,12 @@ namespace mp1::detail {
   inline void require_rma_cas_datatype(const context& ctx) {
     const rma_datatype_category category = require_rma_atomic_datatype<T>(ctx);
     if (category != rma_datatype_category::c_integer and
-        category != rma_datatype_category::fortran_integer and
         category != rma_datatype_category::logical and
-        category != rma_datatype_category::byte and
-        category != rma_datatype_category::multi_language) {
+        category != rma_datatype_category::byte) {
       detail::fail_as<std::invalid_argument>(
           ctx, std::source_location::current(),
-          "MPI_Compare_and_swap requires a predefined datatype in the C integer, Fortran "
-          "integer, Logical, Multi-language or Byte category (MPI 4.1 §12.3.4 Compare and "
-          "Swap); the element datatype is {}",
+          "MPI_Compare_and_swap requires a predefined C++ datatype in the C integer, Logical "
+          "or Byte category (MPI 4.1 §12.3.4 Compare and Swap); the element datatype is {}",
           rma_datatype_category_name(category));
     }
   }
@@ -540,10 +536,8 @@ namespace mp1::detail {
     } else {
       constexpr rma_datatype_category category = static_rma_category<U>();
       return category == rma_datatype_category::c_integer or
-             category == rma_datatype_category::fortran_integer or
              category == rma_datatype_category::logical or
              category == rma_datatype_category::byte or
-             category == rma_datatype_category::multi_language or
              category == rma_datatype_category::invalid;
     }
   }();
@@ -1137,10 +1131,9 @@ namespace mp1::detail {
   void rma_compare_and_swap(const mpi_window& w, const T* origin, const T* compare, T* result,
                             int target_rank, MPI_Aint target_disp, const context& ctx) {
     static_assert(rma_cas_datatype_v<T>,
-                  "mp1: MPI_Compare_and_swap requires a predefined datatype in the C "
-                  "integer, Fortran integer, Logical, Multi-language or Byte category (MPI "
-                  "4.1 §12.3.4 Compare and Swap); double/float/complex, char/wchar_t and "
-                  "derived structs are not permitted");
+                  "mp1: MPI_Compare_and_swap requires a predefined C++ datatype in the C "
+                  "integer, Logical or Byte category (MPI 4.1 §12.3.4 Compare and Swap); "
+                  "double/float/complex, char/wchar_t and derived structs are not permitted");
     require_rma_window(w, ctx);
     if (target_rank == MPI_PROC_NULL) {
       check_mpi(MPI_Compare_and_swap(rma_dummy_buffer(), rma_dummy_buffer(), rma_dummy_buffer(),

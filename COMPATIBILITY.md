@@ -131,31 +131,55 @@ components (same leaf datatypes and extent). The peer's counts are element
 counts and its displacements are extent units. A receiver may still take an
 mp1 message as `MPI_PACKED` and unpack it (the `MPI_PACKED` receive count is a
 byte count); mp1 never sends `MPI_PACKED`, and that relaxation does not make a
-typed send's element count a byte count. Because the wire is typed, MPI §3.3.2
-representation conversion applies to typed values across heterogeneous
-environments; it is specified by MPI and is not exercised by homogeneous CI
-configurations. The same rule applies to the mp1-managed reduction callback
-image: it is typed over `native_datatype<T>()` and adds no byte component. The
-byte-level exception is unchanged: `std::byte` maps to `MPI_BYTE` and its wire
-is the byte image with byte counts (see [Type erasure](#type-erasure)).
+typed send's element count a byte count.
+
+The datatype mapping is independent of the reduction/RMA operator mapping. A
+custom `MP1_DATATYPE_TRAITS(T, mpi_type)` mapping may name a predefined
+datatype outside the C++ categories (for example `MPI_INTEGER` or
+`MPI_C_DOUBLE_COMPLEX`), and that handle is the data wire for send and receive:
+a peer written in another language must present the same datatype, and mp1
+neither rewrites nor reinterprets it. Such a `T` is outside the C++ datatype
+categories used by the typed reduction and RMA operator mapping: a typed
+reduction functor for it stays on the callback (no predefined mapping), the
+typed `predefined_op` functor constructor rejects it, and a raw `MPI_Op` in a
+collective is still forwarded unchanged with `native_datatype<T>()`. A raw
+`MPI_Op` handle for an RMA operation is accepted only when the runtime datatype
+category is one of the C++ categories (`MPI_INT`, for example, is the C++
+integer category).
+
+Because the wire is typed, MPI §3.3.2 representation conversion applies to
+typed values across heterogeneous environments; it is specified by MPI and is
+not exercised by homogeneous CI configurations. The same rule applies to the
+mp1-managed reduction callback image: it is typed over `native_datatype<T>()`
+and adds no byte component. The byte-level exception is unchanged:
+`std::byte` maps to `MPI_BYTE` and its wire is the byte image with byte counts
+(see [Type erasure](#type-erasure)).
 
 ## Reduction operator categories
 
 Typed functors and raw `MPI_Op` handles are not interchangeable categories:
 
-- **Typed functors** map to a predefined operation only where the C++ result
-  matches MPI's table: `std::plus`/`std::multiplies` use C integer, floating
-  and (for RMA) complex; `mp1::max`/`mp1::min` use C integer (floating only in
-  RMA; collectives keep the callback for NaN behavior); `std::bit_*` use C
-  integer and Byte (`std::byte`); `std::logical_and`/`std::logical_or` and
-  `mp1::logical_xor` map only for `bool` in RMA and always use the callback in
-  collectives.
+- **Typed functors** map to the predefined operation MPI 4.1 §6.9.2 defines
+  for the C++ element datatype category: `std::plus`/`std::multiplies` use C
+  integer, floating and complex; `mp1::max`/`mp1::min` use C integer and
+  floating; `std::bit_*` use C integer and Byte (`std::byte`);
+  `std::logical_and`/`std::logical_or` and `mp1::logical_xor` use C integer and
+  Logical (`bool`). The C++ datatypes are `MPI_CXX_BOOL` and
+  `MPI_CXX_*_COMPLEX`; Fortran datatypes are out of scope for the typed
+  mapping and the predefined-operation table. The predefined
+  operation's result semantics are MPI's (floating max/min NaN behavior, the
+  integer logical value), not a C++ reimplementation. The mp1 functors default
+  their element type to `void` (`mp1::max{}`): the same category rules apply,
+  decided from the element type of the reduction, so the transparent spelling
+  never changes a mapping.
 - **Raw predefined `MPI_Op`** handles in the RMA families are accepted through
   `predefined_op<U>` according to MPI 4.1 §12.3.4 and the §6.9.2 datatype
-  categories for `U`, which are wider than the typed mapping (for example
-  Fortran integer and Multi-language where MPI defines them). A raw RMA handle must be
-  a standard predefined operation; user-created handles, `MPI_OP_NULL`,
-  `MPI_MAXLOC`/`MPI_MINLOC`, and category mismatches are rejected before MPI.
+  categories for `U`. The C++ typed surface maps the C++ datatypes only: a C or
+  Fortran datatype variant (`MPI_C_BOOL`, `MPI_C_*_COMPLEX`, `MPI_LOGICAL`,
+  `MPI_REAL`, `MPI_COMPLEX`, ...) or a multi-language category is rejected
+  before the MPI call. A raw RMA handle must be a standard predefined
+  operation; user-created handles, `MPI_OP_NULL`, `MPI_MAXLOC`/`MPI_MINLOC`,
+  and category mismatches are rejected before MPI.
 - **Raw `MPI_Op`** handles in the non-RMA collective reduction families are
   forwarded unchanged to MPI: any non-null handle is passed to the collective as
   the caller supplied it, and only `MPI_OP_NULL` is rejected locally. mp1 does
@@ -217,10 +241,17 @@ actually commutative (integral `mp1::max`/`min`; arithmetic
 `mp1::logical_xor`; floating `std::plus<std::complex<T>>`/
 `std::multiplies<std::complex<T>>`; integral-or-`std::byte` `std::bit_*`;
 explicit user opt-in through `commutative_op` or an `op_traits`
-specialization). In particular floating-point `max`/`min` and user-defined
-types are created with `commute = 0`, which fixes the operand order to
-ascending rank order (MPI 4.1 §6.9.5) and preserves NaN propagation for
-`max<double>`.
+specialization). The trait is consulted only on the callback path: a mapped
+§6.9.2 pair never creates an `MPI_Op`. For a callback-only pair the value is the
+`commute` argument of `MPI_Op_create` -- `commute = 0` where the C++ operation
+is not commutative (for example a user-defined element type), which fixes the
+operand order to ascending rank order (MPI 4.1 §6.9.5). The transparent
+spellings the library classifies (the `std::plus`/`multiplies`/`equal_to`/
+`not_equal_to`/`logical_and`/`logical_or`/`bit_*` `void` specializations and
+`mp1::max<>`, `mp1::min<>`, `mp1::logical_xor<>`) are classified by substituting the reduction
+element type into the same `op_traits` row as the typed spelling;
+`op_traits<mp1::max<>>` and `op_traits<std::plus<void>>` alone are `false`,
+because a type-only query has no operand to classify.
 
 ## Not supported
 
@@ -230,7 +261,7 @@ ascending rank order (MPI 4.1 §6.9.5) and preserves NaN propagation for
 | `MPI_Alltoallw`, `MPI_Type_create_darray`, runtime raw-struct/array datatype construction | Not wrapped. HPF-style darray file views and heterogeneous datatypes require raw MPI. For homogeneous byte type erasure use `std::span<std::byte>` or `region<std::byte>`. There is no general raw-datatype bridge; `layout<T>::from_raw` is the one documented raw-adoption escape (derived handle, type map over `T`, ownership transfers on entry). |
 | Public `MPI_Pack`/`MPI_Unpack` | Not wrapped; the wrapper's staging is internal. |
 | RMA accumulating families with a heterogeneous/empty derived datatype, a custom derived trait without `MP1_DATATYPE_BASIC`, an unannotated opaque custom type, or a top-level C-array element type | Compile-time error (MPI 4.1 §12.3.4). A homogeneous-derived `T` is accepted with `predefined_op<U>`; an annotated custom trait is accepted after its one-time committed-datatype validation. A C array is supported as a member only. `put`/`get` are unaffected and still accept a mixed `region<T>`. |
-| `MPI_MAXLOC`/`MPI_MINLOC`, CAS outside the C integer/Fortran integer/Logical/Multi-language/Byte categories, or count/layout forms of CAS/FOP | Rejected before MPI. `fetch_and_op` and `compare_and_swap` are single-element and require a predefined datatype; there is no homogeneous-derived fallback. |
+| `MPI_MAXLOC`/`MPI_MINLOC`, CAS outside the C integer/Logical/Byte categories, or count/layout forms of CAS/FOP | Rejected before MPI. `fetch_and_op` and `compare_and_swap` are single-element and require a predefined C++ datatype; there is no homogeneous-derived fallback. |
 | RMA container data forms | Origin/result are `std::span`/`region`; there is no container overload. Use `std::span{container}` or a layout. |
 | Typed `MPI_MAXLOC`/`MPI_MINLOC` reductions | mp1 has no `MPI_2*` pair datatype model. Raw `MPI_Op` handles are accepted by the non-RMA reduction families, but using them is raw-MPI territory. |
 | Advanced communicator and group creation (`MPI_Comm_idup*`, `MPI_Comm_create_from_group`, `MPI_Intercomm_create_from_groups`, `MPI_Group_range_*`) | Not wrapped. Use raw MPI through `native_handle()` or `communicator::adopt()`. |

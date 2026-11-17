@@ -213,9 +213,12 @@ extent. Do not pass the old byte values directly to `blocks`.
 
 The old raw `MPI_Op`-or-functor argument remains a raw `MPI_Op` or functor in
 mp1; the call position is the only change. The old `mpl::max`/`min`/
-`logical_xor` functors and `op_traits` keep their names under `mp1::`. The
-duplicate mp1 spellings of the other seven functors are gone in 1.0: replace
-the old `mpl::plus`/`multiplies`/`logical_and`/`logical_or`/`bit_and`/
+`logical_xor` functors and `op_traits` keep their names under `mp1::`. Their
+element type now defaults to `void`, so `mp1::max{}` is the transparent
+spelling that deduces its operands (the same operation as `mp1::max<T>{}`);
+this is an addition, not a replacement. The duplicate mp1 spellings of the
+other seven functors are gone in 1.0: replace the old
+`mpl::plus`/`multiplies`/`logical_and`/`logical_or`/`bit_and`/
 `bit_or`/`bit_xor` functors with the standard-library `std::plus`/
 `std::multiplies`/`std::logical_and`/`std::logical_or`/`std::bit_and`/
 `std::bit_or`/`std::bit_xor` (or the transparent `std::*<void>` form).
@@ -228,10 +231,14 @@ built-in functors no longer inherit a blanket commutativity tag: `op_traits`
 now reports conditional truth (integral `mp1::max`/`min`, arithmetic
 `std::plus`/`std::multiplies`/`std::logical_and`/`std::logical_or` and
 `mp1::logical_xor`, floating `std::plus<std::complex<T>>`/
-`std::multiplies<std::complex<T>>`, integral-or-`std::byte` `std::bit_*`), and
-floating `max`/`min` and user types create the `MPI_Op` with `commute = 0`.
-The `commutative_op` tag and user `op_traits` specializations remain the
-opt-in.
+`std::multiplies<std::complex<T>>`, integral-or-`std::byte` `std::bit_*`); the
+trait is consulted only on the callback path, since a mapped MPI 4.1 §6.9.2
+pair never creates an `MPI_Op`, and user types create their `MPI_Op` with
+`commute = 0`. The transparent mp1 spellings are classified from the reduction
+element type with the same truth table as the typed spelling;
+`op_traits<mp1::max<>>` alone is `false` (a type-only query has no operand), as
+for `std::plus<void>`. The `commutative_op` tag and user `op_traits`
+specializations remain the opt-in.
 
 ## 7. Layouts, datatypes and operators
 

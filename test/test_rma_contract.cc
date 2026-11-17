@@ -46,8 +46,9 @@
 
 
 // Custom predefined-datatype mappings: MPI_INT is a supported basic type, MPI_2INT is a
-// predefined pair datatype that mp1 does not model in the typed RMA op table.  Both are
-// classified from the committed handle at run time (one MPI query per T), before the RMA call.
+// predefined pair datatype that mp1 does not model in the typed RMA op table, and
+// MPI_INTEGER/MPI_C_BOOL are outside the C++ categories.  All are classified from the
+// committed handle at run time (one MPI query per T), before the RMA call.
 struct rma_custom_int {
   int value;
 };
@@ -57,8 +58,30 @@ struct rma_custom_pair {
   int second;
 };
 
+struct rma_fortran_int {
+  int value;
+};
+
+enum class rma_custom_bool : unsigned char { off = 0, on = 1 };
+enum class rma_custom_enum_int : int { zero = 0 };
+enum class rma_plain_enum : int { zero = 0 };
+
 MP1_DATATYPE_TRAITS(rma_custom_int, MPI_INT)
 MP1_DATATYPE_TRAITS(rma_custom_pair, MPI_2INT)
+MP1_DATATYPE_TRAITS(rma_fortran_int, MPI_INTEGER)
+MP1_DATATYPE_TRAITS(rma_custom_bool, MPI_C_BOOL)
+MP1_DATATYPE_TRAITS(rma_custom_enum_int, MPI_INT)
+
+// An explicit trait on an enum overrides the underlying-type default: the category is
+// resolved from the handle at run time.  A plain enum keeps the underlying category.
+static_assert(mp1::detail::static_rma_category<rma_custom_bool>() ==
+              mp1::detail::rma_datatype_category::invalid);
+static_assert(mp1::detail::static_rma_category<rma_custom_enum_int>() ==
+              mp1::detail::rma_datatype_category::invalid);
+static_assert(mp1::detail::static_rma_category<rma_fortran_int>() ==
+              mp1::detail::rma_datatype_category::invalid);
+static_assert(mp1::detail::static_rma_category<rma_plain_enum>() ==
+              mp1::detail::rma_datatype_category::c_integer);
 
 namespace {
 
@@ -702,10 +725,11 @@ BOOST_AUTO_TEST_CASE(accumulate_builtin_and_standard_operators) {
   const int two = 2;
   int old = -1;
 
-  // Blocking accumulate with std::plus<int> and mp1::max<int>.
+  // Blocking accumulate with std::plus<int>, mp1::max<int> and the transparent mp1::max<>.
   mp1::accumulate(w, mp1::span_from(&one, 1), 0, 0, 1, std::plus<int>{});
   mp1::accumulate(w, mp1::span_from(&two, 1), 0, 0, 1, std::plus<int>{});
   mp1::accumulate(w, mp1::span_from(&rank, 1), 0, 2, 1, mp1::max<int>{});
+  mp1::accumulate(w, mp1::span_from(&rank, 1), 0, 2, 1, mp1::max{});
 
   // get_accumulate and fetch_and_op with standard/built-in functors.
   mp1::get_accumulate(w, mp1::span_from(&one, 1), mp1::span_from(&old, 1), 0, 3, 1,
@@ -1121,6 +1145,33 @@ BOOST_AUTO_TEST_CASE(accumulate_predefined_complex_bool_byte) {
     w.free();
   }
 
+  // C integers are the other Logical category: LAND/LXOR map to MPI_LAND/MPI_LXOR and the
+  // integer result value is MPI's (MPI 4.1 §6.9.2), not a C++ 0/1 normalization.
+  {
+    mp1::window w = mp1::window::allocate(
+        c, {.size = static_cast<MPI_Aint>(2 * sizeof(int)), .disp_unit = sizeof(int)});
+    int* target = static_cast<int*>(w.base());
+    if (rank == 0) {
+      target[0] = 1;
+      target[1] = 0;
+    }
+    mp1::fence(w);
+    mp1::lock_all(w);
+    mp1::barrier(c);
+    const int three = 3;
+    mp1::accumulate(w, mp1::span_from(&three, 1), 0, 0, 1, std::logical_and<int>{});
+    mp1::accumulate(w, mp1::span_from(&three, 1), 0, 1, 1, mp1::logical_xor<int>{});
+    mp1::flush_all(w);
+    mp1::barrier(c);
+    mp1::unlock_all(w);
+    sync_after_passive(c, w);
+    if (rank == 0) {
+      BOOST_TEST(target[0] != 0);
+      BOOST_TEST((target[1] != 0) == (size % 2 == 1));
+    }
+    w.free();
+  }
+
   // std::byte is the Byte category: BAND/BOR/BXOR map to the byte operation (§6.9.2).
   {
     mp1::window w = mp1::window::allocate(
@@ -1483,6 +1534,18 @@ BOOST_AUTO_TEST_CASE(custom_predefined_trait_classified_before_mpi) {
     BOOST_TEST(throws_invalid([&] { mp1::fetch_and_op(w, &pair, &result, 0, 0, MPI_SUM); }));
     w.free();
   }
+
+  // An explicit trait on an enum overrides the underlying-type default.  The handle is
+  // classified at run time: MPI_INT is the C++ C integer category, MPI_C_BOOL is outside the
+  // C++ categories, and a datatype outside them is rejected before MPI.
+  BOOST_TEST((mp1::detail::rma_datatype_category_of<rma_custom_enum_int>() ==
+              mp1::detail::rma_datatype_category::c_integer));
+  BOOST_TEST((mp1::detail::rma_datatype_category_of<rma_custom_bool>() ==
+              mp1::detail::rma_datatype_category::invalid));
+  BOOST_TEST((mp1::detail::rma_datatype_category_of<rma_fortran_int>() ==
+              mp1::detail::rma_datatype_category::invalid));
+  BOOST_TEST(throws_invalid([&] { (void)mp1::predefined_op<rma_custom_bool>{MPI_LAND}; }));
+  BOOST_TEST(throws_invalid([&] { (void)mp1::predefined_op<rma_fortran_int>{MPI_SUM}; }));
 }
 
 BOOST_AUTO_TEST_CASE(local_validation) {

@@ -20,6 +20,19 @@ struct padded_value {
 
 MP1_REFLECTION(padded_value, first, second)
 
+// A custom trait may name a peer's datatype for the data wire.  MPI_INTEGER is outside the
+// C++ reduction categories, so the typed predefined mapping does not apply to this type.
+struct allreduce_fortran_int {
+  int value{0};
+};
+
+[[nodiscard]] constexpr allreduce_fortran_int operator+(
+    const allreduce_fortran_int& left, const allreduce_fortran_int& right) noexcept {
+  return allreduce_fortran_int{left.value + right.value};
+}
+
+MP1_DATATYPE_TRAITS(allreduce_fortran_int, MPI_INTEGER)
+
 // op_traits classifies standard-library functors but keeps non-commutative operations and
 // user-defined element types (including std::plus<std::string>) non-commutative; complex
 // addition and multiplication are the explicit standard-library exception.
@@ -45,41 +58,51 @@ static_assert(not mp1::detail::is_commutative_reduction_v<std::string, std::plus
 static_assert(not mp1::detail::is_commutative_reduction_v<int, std::minus<void>>);
 static_assert(mp1::detail::is_commutative_reduction_v<int, std::equal_to<void>>);
 
-// The predefined mapping is deliberately type-safe and conservative.
+// The predefined mapping is the MPI 4.1 §6.9.2 row for the C++ datatype category: C integer,
+// floating and std::complex for SUM/PROD; C integer and floating for MAX/MIN; C integer and
+// std::byte for bitwise; C integer and bool for the logical operations.  A pair outside the
+// row uses the callback.
 static_assert(mp1::detail::is_predefined_reduction_functor_v<int, std::plus<int>>);
 static_assert(mp1::detail::is_predefined_reduction_functor_v<double, std::plus<double>>);
+static_assert(mp1::detail::is_predefined_reduction_functor_v<std::complex<double>,
+                                                             std::plus<std::complex<double>>>);
 static_assert(mp1::detail::is_predefined_reduction_functor_v<int, std::multiplies<int>>);
 static_assert(mp1::detail::is_predefined_reduction_functor_v<unsigned, std::bit_and<unsigned>>);
 static_assert(mp1::detail::is_predefined_reduction_functor_v<int, mp1::max<int>>);
-static_assert(not mp1::detail::is_predefined_reduction_functor_v<double, mp1::max<double>>);
+static_assert(mp1::detail::is_predefined_reduction_functor_v<double, mp1::max<double>>);
+static_assert(mp1::detail::is_predefined_reduction_functor_v<int, std::logical_and<int>>);
+static_assert(mp1::detail::is_predefined_reduction_functor_v<bool, std::logical_and<bool>>);
 static_assert(not mp1::detail::is_predefined_reduction_functor_v<double, std::plus<int>>);
 static_assert(not mp1::detail::is_predefined_reduction_functor_v<bool, std::plus<bool>>);
 static_assert(not mp1::detail::is_predefined_reduction_functor_v<std::string, std::plus<void>>);
-// Logical predefined ops are never mapped in collectives: MPI 4.1 §6.9.2 does not specify a
-// numeric result for the C-integer logical reductions, so the stateless callback remains the
-// single path for every logical functor (including bool).
-static_assert(not mp1::detail::is_predefined_reduction_functor_v<int, std::logical_and<int>>);
-static_assert(not mp1::detail::is_predefined_reduction_functor_v<int, std::logical_or<int>>);
-static_assert(not mp1::detail::is_predefined_reduction_functor_v<bool, std::logical_and<bool>>);
-static_assert(not mp1::detail::is_predefined_reduction_functor_v<bool, std::logical_or<bool>>);
+static_assert(not mp1::detail::is_predefined_reduction_functor_v<char, mp1::max<char>>);
+static_assert(
+    not mp1::detail::is_predefined_reduction_functor_v<double, std::logical_and<double>>);
 
-// RMA has no callback fallback.  The §6.9.2 (Predefined Reduction Operations) table maps
-// floating-point max/min and complex sum/product there, std::byte bitwise ops to
-// MPI_BAND/BOR/BXOR, and bool logical ops to MPI_LAND/LOR/LXOR; C-integer logical functors
-// stay rejected because they have no exact predefined mapping.
+// RMA uses the same C++ typed row.  Floating max/min, complex sum/product, std::byte bitwise
+// and the C-integer/Logical logical operations map to the predefined handles.
 static_assert(mp1::detail::is_predefined_rma_functor_v<double, mp1::max<double>>);
 static_assert(mp1::detail::is_predefined_rma_functor_v<std::complex<double>,
                                                        std::plus<std::complex<double>>>);
 static_assert(mp1::detail::is_predefined_rma_functor_v<std::complex<float>,
                                                        std::multiplies<std::complex<float>>>);
 static_assert(mp1::detail::is_predefined_rma_functor_v<std::byte, std::bit_or<std::byte>>);
+static_assert(mp1::detail::is_predefined_rma_functor_v<int, std::logical_and<int>>);
+static_assert(mp1::detail::is_predefined_rma_functor_v<int, mp1::logical_xor<>>);
+static_assert(mp1::detail::is_predefined_rma_functor_v<bool, std::logical_and<bool>>);
 static_assert(not mp1::detail::is_predefined_rma_functor_v<double, std::plus<int>>);
 static_assert(not mp1::detail::is_predefined_rma_functor_v<std::string, std::plus<void>>);
-static_assert(not mp1::detail::is_predefined_rma_functor_v<int, std::logical_and<int>>);
-static_assert(mp1::detail::is_predefined_rma_functor_v<bool, std::logical_and<bool>>);
 static_assert(not mp1::detail::is_predefined_rma_functor_v<std::complex<double>,
                                                            mp1::max<std::complex<double>>>);
 
+
+// An enum element type borrows its underlying predefined datatype and stays on the callback
+// path, so it locks the transparent logical_xor normalization: the 0/1 result must convert
+// back to the enum type exactly like the typed spelling.
+enum class parity_flag : unsigned char { off = 0, on = 1 };
+
+static_assert(std::is_same_v<decltype(mp1::logical_xor<>{}(parity_flag::on, parity_flag::off)),
+                             parity_flag>);
 
 namespace {
 
@@ -179,11 +202,54 @@ BOOST_AUTO_TEST_CASE(allreduce_scalar_and_operators) {
   mp1::allreduce(comm, mp1::max<int>{}, rank, recv);
   BOOST_TEST(recv == size - 1);
 
+  // The transparent spellings deduce their operand: integral max/min and floating-point
+  // max/min map to the predefined handles.
+  recv = -1;
+  mp1::allreduce(comm, mp1::max{}, rank, recv);
+  BOOST_TEST(recv == size - 1);
+
+  recv = -1;
+  mp1::allreduce(comm, mp1::min{}, rank, recv);
+  BOOST_TEST(recv == 0);
+
+  double transparent_recv = -1.0;
+  mp1::allreduce(comm, mp1::max{}, 0.5 * static_cast<double>(rank), transparent_recv);
+  BOOST_TEST(transparent_recv == 0.5 * static_cast<double>(size - 1));
+
+  // Character and Logical are outside MPI_MAX's categories: the transparent object stays on
+  // the callback and the C++ max semantics apply.
+  char char_send = static_cast<char>('a' + rank);
+  char char_recv = '\0';
+  mp1::allreduce(comm, mp1::max{}, char_send, char_recv);
+  BOOST_TEST(char_recv == static_cast<char>('a' + size - 1));
+
+  const bool bool_send = rank == 0;
+  bool bool_recv = false;
+  mp1::allreduce(comm, mp1::max{}, bool_send, bool_recv);
+  BOOST_TEST(bool_recv);
+
+  // A custom trait mapped to a peer's MPI_INTEGER wire is outside the typed predefined
+  // mapping; the raw MPI_Op and the managed callback both use native_datatype<T>().
+  static_assert(
+      not mp1::detail::is_predefined_reduction_functor_v<allreduce_fortran_int,
+                                                         std::plus<allreduce_fortran_int>>);
+  const int fortran_expected = size * (size + 1) / 2;
+  allreduce_fortran_int raw_in{rank + 1};
+  allreduce_fortran_int raw_out{};
+  mp1::allreduce(comm, MPI_SUM, raw_in, raw_out);
+  BOOST_TEST(raw_out.value == fortran_expected);
+
+  allreduce_fortran_int callback_in{rank + 1};
+  allreduce_fortran_int callback_out{};
+  mp1::allreduce(comm, std::plus<allreduce_fortran_int>{}, callback_in, callback_out);
+  BOOST_TEST(callback_out.value == fortran_expected);
+
   // The adapter must select the predefined handles, not just produce the right result.
   BOOST_TEST((mp1::detail::predefined_mpi_op<int, std::plus<int>>() == MPI_SUM));
   BOOST_TEST((mp1::detail::predefined_mpi_op<int, std::plus<int>>() == MPI_SUM));
   BOOST_TEST((mp1::detail::predefined_mpi_op<double, std::multiplies<double>>() == MPI_PROD));
   BOOST_TEST((mp1::detail::predefined_mpi_op<int, mp1::max<int>>() == MPI_MAX));
+  BOOST_TEST((mp1::detail::predefined_mpi_op<int, mp1::max<>>() == MPI_MAX));
   BOOST_TEST((mp1::detail::predefined_mpi_op<unsigned, std::bit_xor<unsigned>>() == MPI_BXOR));
   BOOST_TEST((mp1::detail::predefined_mpi_op<double, mp1::min<double>>() == MPI_MIN));
 
@@ -202,21 +268,53 @@ BOOST_AUTO_TEST_CASE(allreduce_scalar_and_operators) {
 
 BOOST_AUTO_TEST_CASE(allreduce_logical_operator_results) {
   const mp1::mpi_communicator comm = mp1::comm_world();
+  const int rank = comm.rank();
   const int size = comm.size();
 
-  // Logical functors normalize to 0/1.  Mapping MPI_INT to MPI_LAND/MPI_LOR can return the
-  // input value instead of a normalized result, so these use the callback path.
+  // C-integer logical reductions use MPI_LAND/MPI_LOR/MPI_LXOR (MPI 4.1 §6.9.2).  The integer
+  // result value is MPI's, so compare the functor path with the raw handle instead of assuming
+  // a 0/1 normalization.
   int recv = -1;
+  int raw = -1;
   mp1::allreduce(comm, std::logical_and<int>{}, 3, recv);
-  BOOST_TEST(recv == 1);
+  mp1::allreduce(comm, MPI_LAND, 3, raw);
+  BOOST_TEST(recv == raw);
 
   recv = -1;
+  raw = -1;
   mp1::allreduce(comm, std::logical_or<int>{}, 3, recv);
-  BOOST_TEST(recv == 1);
+  mp1::allreduce(comm, MPI_LOR, 3, raw);
+  BOOST_TEST(recv == raw);
 
   recv = -1;
+  raw = -1;
   mp1::allreduce(comm, mp1::logical_xor<int>{}, 3, recv);
-  BOOST_TEST(recv == (size % 2));
+  mp1::allreduce(comm, MPI_LXOR, 3, raw);
+  BOOST_TEST(recv == raw);
+
+  // The transparent spelling maps to the same predefined operation.
+  recv = -1;
+  raw = -1;
+  mp1::allreduce(comm, mp1::logical_xor{}, 3, recv);
+  mp1::allreduce(comm, MPI_LXOR, 3, raw);
+  BOOST_TEST(recv == raw);
+
+  // bool is the Logical category: MPI_LXOR over MPI_CXX_BOOL is exactly the boolean xor.
+  bool bool_recv = false;
+  mp1::allreduce(comm, mp1::logical_xor{}, (rank % 2) == 1, bool_recv);
+  BOOST_TEST(bool_recv == ((size / 2) % 2 == 1));
+
+  // A floating-point element is not a logical category, so it stays on the callback and keeps
+  // the C++ 0/1 normalization.
+  double double_recv = -1.0;
+  mp1::allreduce(comm, mp1::logical_xor{}, 3.0, double_recv);
+  BOOST_TEST(double_recv == static_cast<double>(size % 2));
+
+  // The same operation over an enum element type keeps the enum type (not bool) as the
+  // reduction result and uses the underlying predefined datatype.
+  parity_flag flag_recv = parity_flag::off;
+  mp1::allreduce(comm, mp1::logical_xor{}, parity_flag::on, flag_recv);
+  BOOST_TEST(static_cast<int>(flag_recv) == (size % 2));
 }
 
 BOOST_AUTO_TEST_CASE(allreduce_buffers_and_containers) {

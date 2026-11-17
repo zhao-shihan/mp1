@@ -33,7 +33,7 @@ runner on fixtures in `self_check/` and asserts:
 | positive control does not compile | fail |
 | no `EXPECT` supplied | fail |
 
-The set is **95** contract probes. They register **97** CTest entries: the 95
+The set is **94** contract probes. They register **96** CTest entries: the 94
 probes plus the runner self-check probe and the inverse runner self-check. The
 probes are:
 
@@ -45,9 +45,8 @@ probes are:
 | `nodiscard_request.cc` | requests | §3.7.3 / §11.2.2: an initiated request must be completed (or freed) before finalize; the attribute makes dropping it explicit. |
 | `rma_custom_functor.cc` | RMA operator adapter | §12.3.4: only predefined reduction operators may be used; user-defined operators cannot be used. |
 | `throwing_reduction_functor.cc` | reduction operator adapter | MPI 4.1 §6.9.5: a C++ exception cannot unwind through the MPI user-op C callback; a functor whose `operator()` is not `noexcept` is a compile-time error. |
-| `rma_logical_functor.cc` | RMA operator adapter | §12.3.4: only predefined operators; the C-integer logical functors have no exact predefined mapping (bool does: MPI_LAND/LOR/LXOR on the Logical category). |
-| `rma_cas_double.cc` | RMA typed boundary | §12.3.4 (Compare and Swap): the datatype must be a predefined C integer, Fortran integer, Logical, Multi-language or Byte type; `double` is Floating point. |
-| `rma_cas_character.cc` | RMA typed boundary | §12.3.4 (Compare and Swap) and §6.9.3: `MPI_CHAR`/`MPI_WCHAR` are not in the CAS categories or reduction categories. |
+| `rma_cas_double.cc` | RMA typed boundary | §12.3.4 (Compare and Swap): the datatype must be a predefined C++ datatype in the C integer, Logical or Byte category; `double` is Floating point. |
+| `rma_cas_character.cc` | RMA typed boundary | §12.3.4 (Compare and Swap) and §6.9.3: `MPI_CHAR`/`MPI_WCHAR` are not in the C++ CAS categories or reduction categories. |
 | `rma_fop_derived.cc` | RMA typed boundary | §12.3.4 (Fetch and Op): the datatype argument must be a predefined datatype; a reflected aggregate is derived. |
 | `rma_accumulate_mixed.cc` | RMA typed boundary | §12.3.4 (Accumulate): all basic components must be the same predefined datatype; an int+double reflected struct violates the rule. |
 | `rma_accumulate_mixed_pair.cc` | RMA typed boundary | §12.3.4 (Accumulate): `std::pair<int,double>` has two different known basic components. |
@@ -148,4 +147,4 @@ owned by mp1.
 `harness_compile_pass_controls` compiles every source in `test/compile_pass/`
 with the same command line as a probe control, so a control whose probe was
 removed or renamed cannot become an inert file.  Probe-bound controls are still
-compiled by their probe; this check covers the whole directory (63 sources).
+compiled by their probe; this check covers the whole directory (64 sources).

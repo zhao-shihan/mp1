@@ -114,15 +114,20 @@ namespace mp1 {
                   "reduction_kind and predefined_op_kind must share the same first eleven "
                   "enumerator values: one metadata table is indexed by both");
 
-    // One consteval row per predefined operation. It replaces the four parallel chains that
-    // spelled the same fifteen-row MPI 4.1 §6.9.2 table (name, collective-functor gate,
-    // RMA-functor gate, raw-RMA-handle gate); the native handle mapping stays a function
-    // because Open MPI's MPI_Op handles are not constant expressions before C++26.
+    // One consteval row per predefined operation, mirroring the C++ subset of the MPI 4.1
+    // §6.9.2 table; the RMA-only MPI_REPLACE/MPI_NO_OP rows come from §12.3.4, and
+    // MPI_MAXLOC/MPI_MINLOC are listed with no categories because mp1 does not model the
+    // MPI_2* pair datatypes.  The masks are named after MPI's datatype categories; "C integer"
+    // is the standard's row name, and the C++ integer datatypes are the same predefined handles
+    // (MPI_INT, ...), so there is no separate C++ integer row.  The typed functor mapping and
+    // the raw-RMA-handle validation share one row: both accept exactly the operation/category
+    // pairs MPI defines for the C++ datatypes, and the wrapper passes MPI's result semantics
+    // through instead of re-implementing the operation in a callback.  The C++ datatypes are
+    // MPI_CXX_BOOL for bool and MPI_CXX_*_COMPLEX for std::complex<T>; the C, Fortran and
+    // multi-language categories are out of scope.
     struct predefined_op_descriptor {
       const char* name;
-      std::uint16_t raw_rma_categories;
-      std::uint16_t rma_functor_categories;
-      std::uint16_t collective_categories;
+      std::uint16_t categories;
     };
 
     template<rma_datatype_category... Categories>
@@ -130,60 +135,49 @@ namespace mp1 {
       return ((std::uint16_t{1} << static_cast<unsigned>(Categories)) | ... | std::uint16_t{0});
     }
 
+    // MPI 4.1 §6.9.2 datatype categories for the C++ datatypes, named as in the standard:
+    // "C integer", "Floating point", "Logical", "Complex" and "Byte".  The standard's
+    // "C integer" group is also the C++ integer category: the C++ integer datatypes are the
+    // same predefined handles (MPI_INT, ...).  bool is MPI_CXX_BOOL and std::complex<T> is
+    // MPI_CXX_*_COMPLEX, never MPI_C_BOOL or MPI_C_*_COMPLEX.  Character is not one of the
+    // §6.9.2 reduction groups; it is the MPI_CHAR/MPI_WCHAR category, needed because
+    // MPI_REPLACE/MPI_NO_OP are defined for every C++ predefined datatype (§12.3.4).
     inline constexpr std::uint16_t kCInteger =
         category_mask<rma_datatype_category::c_integer>();
-    inline constexpr std::uint16_t kFortranInteger =
-        category_mask<rma_datatype_category::fortran_integer>();
-    inline constexpr std::uint16_t kFloating = category_mask<rma_datatype_category::floating>();
+    inline constexpr std::uint16_t kFloatingPoint =
+        category_mask<rma_datatype_category::floating_point>();
     inline constexpr std::uint16_t kLogical = category_mask<rma_datatype_category::logical>();
     inline constexpr std::uint16_t kComplex = category_mask<rma_datatype_category::complex>();
     inline constexpr std::uint16_t kByte = category_mask<rma_datatype_category::byte>();
     inline constexpr std::uint16_t kCharacter =
         category_mask<rma_datatype_category::character>();
-    inline constexpr std::uint16_t kMultiLanguage =
-        category_mask<rma_datatype_category::multi_language>();
 
     [[nodiscard]] consteval std::array<predefined_op_descriptor, 15>
     make_predefined_op_table() noexcept {
       return {{
           // none: never mapped; the diagnostic spelling matches the old fallback.
-          {"an unknown/user-defined MPI_Op", 0, 0, 0},
-          // SUM/PROD: §6.9.2 C integer, Fortran integer, floating, complex, multi-language.
-          // Collectives map only C integer and floating (no complex; the callback stays).
-          {"MPI_SUM", kCInteger | kFortranInteger | kFloating | kComplex | kMultiLanguage,
-           kCInteger | kFloating | kComplex, kCInteger | kFloating},
-          {"MPI_PROD", kCInteger | kFortranInteger | kFloating | kComplex | kMultiLanguage,
-           kCInteger | kFloating | kComplex, kCInteger | kFloating},
-          // MAX/MIN: no complex; collectives keep the callback for floating-point NaN
-          // behaviour, so only C integers map there.
-          {"MPI_MAX", kCInteger | kFortranInteger | kFloating | kMultiLanguage,
-           kCInteger | kFloating, kCInteger},
-          {"MPI_MIN", kCInteger | kFortranInteger | kFloating | kMultiLanguage,
-           kCInteger | kFloating, kCInteger},
-          // Bitwise: C integer, Fortran integer, Byte, multi-language.
-          {"MPI_BAND", kCInteger | kFortranInteger | kByte | kMultiLanguage, kCInteger | kByte,
-           kCInteger | kByte},
-          {"MPI_BOR", kCInteger | kFortranInteger | kByte | kMultiLanguage, kCInteger | kByte,
-           kCInteger | kByte},
-          {"MPI_BXOR", kCInteger | kFortranInteger | kByte | kMultiLanguage, kCInteger | kByte,
-           kCInteger | kByte},
-          // Logical: the collective result is not specified as 0/1 for C integers, so
-          // collectives never map them; RMA has no callback and accepts only Logical.
-          {"MPI_LAND", kCInteger | kLogical, kLogical, 0},
-          {"MPI_LOR", kCInteger | kLogical, kLogical, 0},
-          {"MPI_LXOR", kCInteger | kLogical, kLogical, 0},
-          // REPLACE/NO_OP: defined for every predefined category (§12.3.4).
+          {"an unknown/user-defined MPI_Op", 0},
+          // MPI_SUM, MPI_PROD: C integer, Floating point, Complex.
+          {"MPI_SUM", kCInteger | kFloatingPoint | kComplex},
+          {"MPI_PROD", kCInteger | kFloatingPoint | kComplex},
+          // MPI_MAX, MPI_MIN: C integer, Floating point.
+          {"MPI_MAX", kCInteger | kFloatingPoint},
+          {"MPI_MIN", kCInteger | kFloatingPoint},
+          // MPI_BAND, MPI_BOR, MPI_BXOR: C integer, Byte.
+          {"MPI_BAND", kCInteger | kByte},
+          {"MPI_BOR", kCInteger | kByte},
+          {"MPI_BXOR", kCInteger | kByte},
+          // MPI_LAND, MPI_LOR, MPI_LXOR: C integer, Logical (bool is MPI_CXX_BOOL).
+          {"MPI_LAND", kCInteger | kLogical},
+          {"MPI_LOR", kCInteger | kLogical},
+          {"MPI_LXOR", kCInteger | kLogical},
+          // MPI_REPLACE, MPI_NO_OP: every C++ predefined datatype (§12.3.4); RMA only.
           {"MPI_REPLACE",
-           kCInteger | kFortranInteger | kFloating | kLogical | kComplex | kByte | kCharacter |
-               kMultiLanguage,
-           0, 0},
-          {"MPI_NO_OP",
-           kCInteger | kFortranInteger | kFloating | kLogical | kComplex | kByte | kCharacter |
-               kMultiLanguage,
-           0, 0},
-          // MAXLOC/MINLOC need an MPI_2* pair datatype, which mp1 does not model.
-          {"MPI_MAXLOC", 0, 0, 0},
-          {"MPI_MINLOC", 0, 0, 0},
+           kCInteger | kFloatingPoint | kLogical | kComplex | kByte | kCharacter},
+          {"MPI_NO_OP", kCInteger | kFloatingPoint | kLogical | kComplex | kByte | kCharacter},
+          // MPI_MAXLOC, MPI_MINLOC: need an MPI_2* pair datatype, which mp1 does not model.
+          {"MPI_MAXLOC", 0},
+          {"MPI_MINLOC", 0},
       }};
     }
 
@@ -192,14 +186,13 @@ namespace mp1 {
     [[nodiscard]] constexpr std::uint16_t category_bit(
         rma_datatype_category category) noexcept {
       const unsigned index = static_cast<unsigned>(category);
-      return index < 10 ? static_cast<std::uint16_t>(std::uint16_t{1} << index)
-                        : std::uint16_t{0};
+      return index < 8 ? static_cast<std::uint16_t>(std::uint16_t{1} << index)
+                       : std::uint16_t{0};
     }
 
-    [[nodiscard]] consteval std::array<const char*, 10> make_rma_category_names() noexcept {
-      return {{"a derived datatype", "a C integer", "a Fortran integer",
-               "a floating-point type", "a logical type", "a complex type", "a byte type",
-               "a character type", "a multi-language integer type",
+    [[nodiscard]] consteval std::array<const char*, 8> make_rma_category_names() noexcept {
+      return {{"a derived datatype", "a C integer", "a floating-point type", "a logical type",
+               "a complex type", "a byte type", "a character type",
                "an unsupported predefined datatype"}};
     }
 
@@ -213,31 +206,75 @@ namespace mp1 {
   // so a blanket tag would tell MPI that a non-commutative reduction may be reordered.
   struct commutative_op {};
 
-  template<class T>
+  // The three mp1 functors follow the standard-library transparent-functor shape: the element
+  // type is a defaulted parameter whose default is void, so `mp1::max{}` is the transparent
+  // form (the operand types are deduced at the call site) and `mp1::max<int>{}` is the typed
+  // form.  The two spellings are the same operation; only the point where the operand type is
+  // fixed differs.  A transparent operator() returns a value of the common operand type, so
+  // the result stays a T for the same-type operands a reduction always passes.
+  template<class T = void>
   struct max {
     static constexpr detail::reduction_kind kind = detail::reduction_kind::maximum;
 
-    T operator()(const T& x, const T& y) const noexcept(noexcept(x < y)) {
+    constexpr T operator()(const T& x, const T& y) const noexcept(noexcept(x < y)) {
       return (x < y) ? y : x;
     }
   };
 
-  template<class T>
+  template<>
+  struct max<void> {
+    static constexpr detail::reduction_kind kind = detail::reduction_kind::maximum;
+
+    template<class T, class U>
+    constexpr std::common_type_t<T, U> operator()(const T& x, const U& y) const
+        noexcept(noexcept(static_cast<std::common_type_t<T, U>>((x < y) ? y : x))) {
+      return static_cast<std::common_type_t<T, U>>((x < y) ? y : x);
+    }
+  };
+
+  template<class T = void>
   struct min {
     static constexpr detail::reduction_kind kind = detail::reduction_kind::minimum;
 
-    T operator()(const T& x, const T& y) const noexcept(noexcept(y < x)) {
+    constexpr T operator()(const T& x, const T& y) const noexcept(noexcept(y < x)) {
       return (y < x) ? y : x;
     }
   };
 
-  template<class T>
+  template<>
+  struct min<void> {
+    static constexpr detail::reduction_kind kind = detail::reduction_kind::minimum;
+
+    template<class T, class U>
+    constexpr std::common_type_t<T, U> operator()(const T& x, const U& y) const
+        noexcept(noexcept(static_cast<std::common_type_t<T, U>>((y < x) ? y : x))) {
+      return static_cast<std::common_type_t<T, U>>((y < x) ? y : x);
+    }
+  };
+
+  template<class T = void>
   struct logical_xor {
     static constexpr detail::reduction_kind kind = detail::reduction_kind::logical_xor;
 
-    T operator()(const T& x, const T& y) const
+    constexpr T operator()(const T& x, const T& y) const
         noexcept(noexcept(static_cast<T>(static_cast<bool>(x) != static_cast<bool>(y)))) {
       return static_cast<T>(static_cast<bool>(x) != static_cast<bool>(y));
+    }
+  };
+
+  // Transparent form: the 0/1 result is normalized to the common operand type, exactly like
+  // the typed spelling.  A plain bool result would not be implicitly convertible back to an
+  // enum element type, so the two spellings would stop being the same operation.
+  template<>
+  struct logical_xor<void> {
+    static constexpr detail::reduction_kind kind = detail::reduction_kind::logical_xor;
+
+    template<class T, class U>
+    constexpr std::common_type_t<T, U> operator()(const T& x, const U& y) const
+        noexcept(noexcept(static_cast<std::common_type_t<T, U>>(static_cast<bool>(x) !=
+                                                                static_cast<bool>(y)))) {
+      return static_cast<std::common_type_t<T, U>>(static_cast<bool>(x) !=
+                                                   static_cast<bool>(y));
     }
   };
 
@@ -246,12 +283,22 @@ namespace mp1 {
     static constexpr bool is_commutative = std::is_base_of_v<commutative_op, F>;
   };
 
-  // The remaining mp1 functors (max, min, logical_xor) are commutative only for the
-  // operation/type pairs where the C++ operation is actually commutative.  In particular
-  // max/min on floating-point values are not commutative under the callback
-  // (x < y) ? y : x when an operand is NaN, and a user-defined operator< for a class type is
-  // not assumed commutative.  The trait is used only for the MPI_Op_create commute promise;
-  // the predefined mapping above is independent of it.
+  // The mp1 functors (max, min, logical_xor) are commutative only for the operation/type
+  // pairs where the C++ operation is actually commutative.  The predefined mapping above is
+  // decided from the MPI datatype category and does not consult this trait; the trait is only
+  // the MPI_Op_create commute promise for the callback path, which is reached only for a
+  // (functor, category) pair outside the MPI 4.1 §6.9.2 row: character, Logical or Byte
+  // elements for max/min, floating-point or character elements for logical_xor, and enums and
+  // user-defined types.  In particular the C++ max/min expression is not commutative on
+  // floating-point values under the callback (NaN and signed zero), and a user-defined
+  // operator< for a class type is not assumed commutative.
+  //
+  // This trait answers for a fixed operand type.  A transparent spelling (max<>,
+  // std::plus<>, ...) has operands only at the reduction call site, so op_traits<max<>> and
+  // op_traits<std::plus<void>> are false here; the call-site predicate
+  // detail::is_transparent_functor_commutative<T, F> substitutes the reduction element type
+  // into the same specialization the typed spelling uses.  A user opt-in on the transparent
+  // type itself is preserved by the disjunction in is_commutative_reduction_v.
   template<class T>
   struct op_traits<max<T>> {
     static constexpr bool is_commutative = std::is_integral_v<std::remove_cv_t<T>>;
@@ -283,8 +330,10 @@ namespace mp1 {
   // std::complex addition and multiplication are commutative in both components.  The plain
   // arithmetic specialization above excludes them; name the two operations explicitly so the
   // public truth table retains the answer the removed duplicate mp1 functors provided.  Complex
-  // SUM/PROD is mapped only in RMA, so a collective complex reduction (which has no
-  // predefined mapping) is the callback-side consumer of this trait.
+  // SUM/PROD is mapped in both collectives and RMA (MPI 4.1 §6.9.2), so the predefined mapping
+  // does not consult this trait; the row is the public truth table and the commute promise for
+  // a user-supplied complex functor that reaches the callback.  Predefinedness is a
+  // category-table question and never depends on noexcept.
   template<class T>
   struct op_traits<std::plus<std::complex<T>>> {
     static constexpr bool is_commutative = std::is_floating_point_v<T>;
@@ -368,9 +417,10 @@ namespace mp1 {
 
     // The mapped operations are selected from the MPI datatype category, not from a C++ type
     // trait: MPI 4.1 §6.9.2 defines SUM/PROD/MAX/MIN/BAND/BOR/BXOR per predefined datatype
-    // category (C integer, Fortran integer, floating, complex, byte, logical, character,
-    // multi-language), and the category of a C++ element type is the category of
-    // native_datatype<T>(). In particular char and wchar_t are character (not C integer) and
+    // category, and the category of a C++ element type is the category of
+    // native_datatype<T>().  The C++ categories are C integer, floating, complex, logical,
+    // byte and character; the Fortran integer and multi-language categories are not C++
+    // categories. In particular char and wchar_t are character (not C integer) and
     // are excluded from MPI_SUM/MAX/bitwise, while char16_t/char32_t map to a uint_leastN_t C
     // integer datatype and are included. An enum's category is its underlying integer
     // category, but its C++ operators are user-defined, so enums stay on the callback path;
@@ -385,9 +435,11 @@ namespace mp1 {
         static_rma_category<std::remove_cv_t<T>>();
 
     // The functor must be declared for exactly the element type being reduced (or be one of
-    // the transparent std::plus<void>-style functors).  A functor declared for another type
-    // can change the arithmetic -- for example std::plus<int> truncates double operands
-    // between steps -- so it must not be replaced by a predefined operation on T.
+    // the transparent functors, whose operand type is void: the std::plus<void>-style
+    // specializations and the mp1 spellings mp1::max<>, mp1::min<> and mp1::logical_xor<>).
+    // A functor declared for another type can change the arithmetic -- for example
+    // std::plus<int> truncates double operands between steps -- so it must not be replaced by
+    // a predefined operation on T.
     template<class T, class F>
     inline constexpr bool has_matching_operand_v = [] {
       using traits = reduction_functor_traits<F>;
@@ -399,46 +451,24 @@ namespace mp1 {
       }
     }();
 
-    // The collective-functor gate reads its category mask from the one metadata table above.
-    //
-    // Collective reductions keep the callback for floating-point MAX/MIN: MPI_MAX/MPI_MIN are
-    // unspecified when an operand is NaN, so mp1 does not change that behaviour.  The logical
-    // kinds are never mapped here: with MPI_INT some implementations return the integer
-    // operand itself (for example 3 instead of 1), which differs from the 0/1 a C++ logical
-    // functor returns.  Character and Byte are not MAX/MIN categories.
-    [[nodiscard]] consteval bool predefined_reduction_defined_for(
-        reduction_kind kind, rma_datatype_category category) noexcept {
-      // The first eleven enumerators of reduction_kind index the metadata table directly.
+    // The category gate, shared by the typed functor mapping (collective and RMA) and the
+    // raw-RMA-handle validation.  The C++ element's datatype category is one MPI defines the
+    // operation for, so the wrapper uses the predefined operation and passes MPI's semantics
+    // through; there is no second, C++-specific implementation of an operation MPI already
+    // defines.  The table holds the C++ categories only: the C, Fortran and multi-language
+    // datatypes are out of scope.
+    [[nodiscard]] constexpr bool predefined_op_defined_for(
+        predefined_op_kind kind, rma_datatype_category category) noexcept {
       const auto index = static_cast<std::size_t>(kind);
       return index < predefined_ops.size() and
-             (predefined_ops[index].collective_categories & category_bit(category)) != 0;
-    }
-
-    // RMA has no callback fallback: MPI only permits predefined operators (MPI 4.1 §12.3.4
-    // Accumulate/Get Accumulate/Fetch and Op).  SUM/PROD accept C integer, floating, complex
-    // and the multi-language types; MAX/MIN accept C integer and floating (float NaN
-    // behaviour is MPI's, unspecified); bitwise ops accept C integer and Byte; logical ops
-    // accept C integer and Logical (bool maps to MPI_CXX_BOOL).  Character element types are
-    // predefined but are not in any reduction category (§6.9.3), so only
-    // MPI_REPLACE/MPI_NO_OP can reach them through a raw handle.
-    //
-    // The functor gate is stricter than the raw-handle gate: a functor is mapped only when
-    // the exact operands are in the §6.9.2 row, while a raw handle is forwarded for every
-    // category the row defines.
-    [[nodiscard]] consteval bool rma_predefined_defined_for(
-        reduction_kind kind, rma_datatype_category category) noexcept {
-      const auto index = static_cast<std::size_t>(kind);
-      return index < predefined_ops.size() and
-             (predefined_ops[index].rma_functor_categories & category_bit(category)) != 0;
+             (predefined_ops[index].categories & category_bit(category)) != 0;
     }
 
     // The one native-handle mapping.  It cannot be consteval: Open MPI defines MPI_SUM & co.
-    // as a void* -> MPI_Op cast, which is not a constant expression before C++26.  The
-    // logical handles are reachable only from the RMA path (the collective logical kinds are
-    // never mapped), so the caller selects them explicitly; REPLACE/NO_OP/MAXLOC/MINLOC are
-    // reachable only through a raw MPI_Op handle.
-    [[nodiscard]] constexpr MPI_Op predefined_handle_of(predefined_op_kind kind,
-                                                        bool include_logical) noexcept {
+    // as a void* -> MPI_Op cast, which is not a constant expression before C++26.  The caller
+    // applies the category gate first; REPLACE/NO_OP are reachable only through a raw MPI_Op
+    // handle, and MAXLOC/MINLOC are never accepted by the RMA validator.
+    [[nodiscard]] constexpr MPI_Op predefined_handle_of(predefined_op_kind kind) noexcept {
       switch (kind) {
         case predefined_op_kind::sum:
           return MPI_SUM;
@@ -455,11 +485,11 @@ namespace mp1 {
         case predefined_op_kind::bit_xor:
           return MPI_BXOR;
         case predefined_op_kind::logical_and:
-          return include_logical ? MPI_LAND : MPI_OP_NULL;
+          return MPI_LAND;
         case predefined_op_kind::logical_or:
-          return include_logical ? MPI_LOR : MPI_OP_NULL;
+          return MPI_LOR;
         case predefined_op_kind::logical_xor:
-          return include_logical ? MPI_LXOR : MPI_OP_NULL;
+          return MPI_LXOR;
         case predefined_op_kind::replace:
           return MPI_REPLACE;
         case predefined_op_kind::no_op:
@@ -474,46 +504,38 @@ namespace mp1 {
       return MPI_OP_NULL;
     }
 
+    // The typed functor mapping is the same for collectives and RMA: the operation and the
+    // element's C++ datatype category are a row of the table above.  One predicate serves both
+    // call sites; the two variable-template names are kept because each call site states the
+    // family it belongs to.
     template<class T, class F>
-    [[nodiscard]] consteval bool is_predefined_reduction_functor() noexcept {
+    [[nodiscard]] consteval bool is_predefined_functor() noexcept {
       using U = std::remove_cv_t<T>;
       if constexpr (not has_matching_operand_v<T, F> or not has_builtin_operator_v<U>) {
         return false;
       } else {
-        return predefined_reduction_defined_for(reduction_functor_traits<F>::kind,
-                                                operand_category_v<U>);
+        return predefined_op_defined_for(
+            static_cast<predefined_op_kind>(reduction_functor_traits<F>::kind),
+            operand_category_v<U>);
       }
     }
 
     template<class T, class F>
-    inline constexpr bool is_predefined_reduction_functor_v =
-        is_predefined_reduction_functor<T, F>();
+    inline constexpr bool is_predefined_reduction_functor_v = is_predefined_functor<T, F>();
 
     template<class T, class F>
-    [[nodiscard]] consteval bool is_predefined_rma_functor() noexcept {
-      using U = std::remove_cv_t<T>;
-      if constexpr (not has_matching_operand_v<T, F> or not has_builtin_operator_v<U>) {
-        return false;
-      } else {
-        return rma_predefined_defined_for(reduction_functor_traits<F>::kind,
-                                          operand_category_v<U>);
-      }
-    }
-
-    template<class T, class F>
-    inline constexpr bool is_predefined_rma_functor_v = is_predefined_rma_functor<T, F>();
+    inline constexpr bool is_predefined_rma_functor_v = is_predefined_functor<T, F>();
 
     template<class T, class F>
     [[nodiscard]] constexpr MPI_Op predefined_mpi_op() noexcept {
       constexpr reduction_kind kind = reduction_functor_traits<F>::kind;
-      // Only the ten shared reduction kinds map here; an out-of-range user-supplied `kind`
-      // stays unmapped exactly as the old reduction_kind switch left it.
+      // Only the ten shared reduction kinds map here; an out-of-range kind stays unmapped.
       if constexpr (not has_matching_operand_v<T, F> or
                     static_cast<unsigned char>(kind) >
                         static_cast<unsigned char>(reduction_kind::logical_xor))
         return MPI_OP_NULL;
       else
-        return predefined_handle_of(static_cast<predefined_op_kind>(kind), false);
+        return predefined_handle_of(static_cast<predefined_op_kind>(kind));
     }
 
     // Self-guarding RMA mapping: returns MPI_OP_NULL unless is_predefined_rma_functor_v is
@@ -521,11 +543,11 @@ namespace mp1 {
     // invalid (functor, T) pair.
     template<class T, class F>
     [[nodiscard]] constexpr MPI_Op predefined_rma_mpi_op() noexcept {
-      if constexpr (not is_predefined_rma_functor<T, F>())
+      if constexpr (not is_predefined_functor<T, F>())
         return MPI_OP_NULL;
       else
         return predefined_handle_of(
-            static_cast<predefined_op_kind>(reduction_functor_traits<F>::kind), true);
+            static_cast<predefined_op_kind>(reduction_functor_traits<F>::kind));
     }
 
     // ---------------------------------------------------------------------------------------
@@ -542,7 +564,7 @@ namespace mp1 {
     [[nodiscard]] inline predefined_op_kind classify_predefined_op(MPI_Op op) noexcept {
       for (std::size_t index = 1; index < predefined_ops.size(); ++index) {
         const auto kind = static_cast<predefined_op_kind>(index);
-        if (op == predefined_handle_of(kind, true))
+        if (op == predefined_handle_of(kind))
           return kind;
       }
       return predefined_op_kind::none;
@@ -560,16 +582,9 @@ namespace mp1 {
                                                : "an unknown datatype category";
     }
 
-    // MPI 4.1 §6.9.2 (the predefined reduction table) plus MPI_REPLACE/MPI_NO_OP, which
-    // §12.3.4 defines for the accumulating RMA families only.  MAXLOC/MINLOC are always
-    // rejected: mp1 has no MPI_2* pair datatype, so the typed API cannot express them and a
-    // raw handle cannot be checked for the required pair signature.
-    [[nodiscard]] constexpr bool op_defined_for(predefined_op_kind kind,
-                                                rma_datatype_category category) noexcept {
-      const auto index = static_cast<std::size_t>(kind);
-      return index < predefined_ops.size() and
-             (predefined_ops[index].raw_rma_categories & category_bit(category)) != 0;
-    }
+    // MPI 4.1 §6.9.2 defines MPI_REPLACE/MPI_NO_OP for every predefined category (§12.3.4);
+    // MAXLOC/MINLOC are always rejected: mp1 has no MPI_2* pair datatype, so a raw handle
+    // cannot be checked for the required pair signature.
 
     // Validate a raw MPI_Op for an RMA accumulating family and T.  Throws
     // std::invalid_argument before any MPI call.  The family-level NO_OP gate is separate
@@ -600,7 +615,7 @@ namespace mp1 {
                       "and MPI_Fetch_and_op (MPI 4.1 §12.3.4 Get Accumulate)");
       }
       const rma_datatype_category category = rma_datatype_category_of<T>();
-      if (not op_defined_for(kind, category)) {
+      if (not predefined_op_defined_for(kind, category)) {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "{} is not defined for {} (MPI 4.1 §6.9.2 Predefined Reduction Operations); use a "
@@ -623,43 +638,63 @@ namespace mp1 {
           category == rma_datatype_category::invalid) {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
-            "the element datatype is {}, not one predefined MPI datatype; MPI 4.1 §12.3.4 "
-            "requires a predefined datatype for the single-element atomic RMA families "
-            "(fetch_and_op and compare_and_swap)",
+            "the element datatype is {}, not a supported C++ predefined datatype; "
+            "MPI 4.1 §12.3.4 requires a predefined datatype for the single-element atomic RMA "
+            "families (fetch_and_op and compare_and_swap)",
             rma_datatype_category_name(category));
       }
       return category;
     }
 
-    // The transparent standard functors (std::plus<>, std::bit_and<>, ...) cannot be
-    // classified without the element type; decide from T.  std::plus<MyType> is handled by
-    // the op_traits specialization above (and is not marked commutative).  One consteval
-    // predicate replaces the ten partial specializations.
+    // The transparent functors are the typed functors with the element type supplied by the
+    // reduction.  This predicate is only the dispatch: every branch substitutes the element
+    // type into the *same* op_traits specialization the typed spelling uses, so the truth
+    // table lives in one place and the two spellings can never disagree.  In particular the
+    // explicit std::plus<std::complex<T>>/std::multiplies<std::complex<T>> rows and the
+    // integral-or-std::byte std::bit_* row reach the transparent std::plus<void>/
+    // std::multiplies<void>/std::bit_*<void> spellings too, and a user specialization of
+    // op_traits<max<T>> or op_traits<std::plus<T>> applies to both spellings.  The transparent
+    // type itself is not classified here: op_traits<std::plus<void>> stays false unless the
+    // user opts in by specializing it (the disjunction below keeps that opt-in).
     template<class T, class F>
-    [[nodiscard]] consteval bool is_transparent_std_commutative() noexcept {
-      if constexpr (std::same_as<F, std::plus<void>> or
-                    std::same_as<F, std::multiplies<void>> or
-                    std::same_as<F, std::equal_to<void>> or
-                    std::same_as<F, std::not_equal_to<void>> or
-                    std::same_as<F, std::logical_and<void>> or
-                    std::same_as<F, std::logical_or<void>>) {
-        return std::is_arithmetic_v<T>;
-      } else if constexpr (std::same_as<F, std::bit_and<void>> or
-                           std::same_as<F, std::bit_or<void>> or
-                           std::same_as<F, std::bit_xor<void>>) {
-        return std::is_integral_v<T>;
+    [[nodiscard]] consteval bool is_transparent_functor_commutative() noexcept {
+      using U = std::remove_cv_t<T>;
+      if constexpr (std::same_as<F, std::plus<void>>) {
+        return op_traits<std::plus<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::multiplies<void>>) {
+        return op_traits<std::multiplies<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::equal_to<void>>) {
+        return op_traits<std::equal_to<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::not_equal_to<void>>) {
+        return op_traits<std::not_equal_to<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::logical_and<void>>) {
+        return op_traits<std::logical_and<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::logical_or<void>>) {
+        return op_traits<std::logical_or<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::bit_and<void>>) {
+        return op_traits<std::bit_and<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::bit_or<void>>) {
+        return op_traits<std::bit_or<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, std::bit_xor<void>>) {
+        return op_traits<std::bit_xor<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, max<void>>) {
+        return op_traits<max<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, min<void>>) {
+        return op_traits<min<U>>::is_commutative;
+      } else if constexpr (std::same_as<F, logical_xor<void>>) {
+        return op_traits<logical_xor<U>>::is_commutative;
       } else {
         return false;
       }
     }
 
     template<class T, class F>
-    inline constexpr bool is_transparent_std_commutative_v =
-        is_transparent_std_commutative<T, F>();
+    inline constexpr bool is_transparent_functor_commutative_v =
+        is_transparent_functor_commutative<T, F>();
 
     template<class T, class F>
     inline constexpr bool is_commutative_reduction_v =
-        op_traits<F>::is_commutative or is_transparent_std_commutative_v<T, F>;
+        op_traits<F>::is_commutative or is_transparent_functor_commutative_v<T, F>;
 
     // ---------------------------------------------------------------------------------------
     // Nothrow functor gate for the callback path.
@@ -1433,7 +1468,7 @@ namespace mp1 {
   ///     (`std::plus<T>`, `std::logical_and<bool>`, `std::bit_*<std::byte>`, ...); an
   ///     unmappable functor is a compile-time error; or
   ///   * a raw `MPI_Op` that compares equal to a standard predefined handle and is defined for
-  ///     T's datatype category.  A user-created/unknown handle throws std::invalid_argument
+  ///     T's C++ datatype category.  A user-created/unknown handle throws std::invalid_argument
   ///     before any MPI call.
   ///
   /// The type is a borrowed, trivially copyable value; it owns nothing and never frees a
