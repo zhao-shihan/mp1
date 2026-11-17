@@ -96,6 +96,9 @@ esac
 
 cd "${work}/src"
 
+# mp1 is a C++ wrapper and does not require peer language bindings.  The provider is built
+# C-only on purpose; the suite treats an absent Fortran datatype as a valid fail-closed
+# configuration (MPICH makes MPI_INTEGER MPI_DATATYPE_NULL, Open MPI gives it zero extent).
 case "${family}" in
   openmpi)
     printf 'install-mpi: configuring Open MPI %s\n' "${version}"

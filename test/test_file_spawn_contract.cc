@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -196,11 +197,40 @@ namespace {
     return arguments;
   }
 
+  // Polling is a handshake with an external process, not a substitute for an MPI
+  // synchronization: sleep between probes so four parent ranks do not spin the CPU while the
+  // spawned children initialize (a busy loop can starve them under sanitizers).
+  template<class Predicate>
+  bool wait_for_markers(Predicate&& predicate, double seconds) {
+    const double deadline = MPI_Wtime() + seconds;
+    while (MPI_Wtime() < deadline) {
+      if (predicate())
+        return true;
+      std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    }
+    return predicate();
+  }
+
+  // All parent ranks share the marker directory, but a poll can time out on one rank slightly
+  // before another.  Agree before every rank either enters the collective disconnect or
+  // releases the handle, so a failed child cannot deadlock the test in MPI_Comm_disconnect.
+  bool all_parents_ready(bool local_ready) {
+    int local = local_ready ? 1 : 0;
+    int global = 0;
+    MPI_Allreduce(&local, &global, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+    return global != 0;
+  }
+
   void run_spawn_child(const std::string& marker_dir) {
     try {
       mp1::init();
       int rank{0};
       MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      // The child's parent() owner and the parent's spawn() owner are the two ends of the
+      // same spawn intercommunicator; both must disconnect (MPI 4.1 §11.10.4).  Acquire the
+      // parent handle before publishing the marker so the parent never starts its disconnect
+      // while this process is still between MPI_Init and MPI_Comm_get_parent.
+      mp1::communicator parent_comm = mp1::parent();
       if (not marker_dir.empty()) {
         const std::filesystem::path marker =
             std::filesystem::path{marker_dir} / std::to_string(rank);
@@ -214,20 +244,19 @@ namespace {
         std::error_code error;
         std::filesystem::rename(temporary, marker, error);
       }
-      // The child's parent() owner and the parent's spawn() owner are the two ends of the
-      // same spawn intercommunicator; both must disconnect (MPI 4.1 §11.10.4).
-      {
-        mp1::communicator parent_comm = mp1::parent();
-        if (parent_comm.is_valid())
-          parent_comm.disconnect();
-      }
+      if (parent_comm.is_valid())
+        parent_comm.disconnect();
       try {
         mp1::finalize();
         // NOLINTNEXTLINE(bugprone-empty-catch): fixture destructor
       } catch (...) {
         // The inherited MPI state was external; leave it to the process exit.
       }
+    } catch (const std::exception& error) {
+      std::fprintf(stderr, "mp1 spawn child failed: %s\n", error.what());
+      std::_Exit(2);
     } catch (...) {
+      std::fprintf(stderr, "mp1 spawn child failed with an unknown exception\n");
       std::_Exit(2);
     }
     std::_Exit(0);
@@ -831,6 +860,7 @@ BOOST_AUTO_TEST_CASE(spawn_single_and_multiple) {
                                 "--mp1-spawn-marker=" + single_dir.string(), "alpha", "beta"};
   }
   {
+    std::fprintf(stderr, "spawn: single command\n");
     const mp1::spawn_options spawn_options{.maxprocs = 2, .command = command};
     mp1::communicator children = mp1::spawn(world, 0, spawn_options);
     BOOST_TEST(children.is_valid());
@@ -838,19 +868,24 @@ BOOST_AUTO_TEST_CASE(spawn_single_and_multiple) {
     BOOST_TEST(children.size() == world_size());
     BOOST_TEST(children.remote_size() == 2);
     BOOST_TEST(children.remote_group().size() == 2);
-    // Release immediately, while the remote group is still in its own disconnect.  The
-    // children write the marker before disconnecting, so the files are complete afterwards.
-    children.disconnect();
-
-    bool all_markers = false;
-    const double deadline = MPI_Wtime() + 60.0;
-    while (MPI_Wtime() < deadline) {
-      all_markers = std::filesystem::exists(single_dir / "0") and
-                    std::filesystem::exists(single_dir / "1");
-      if (all_markers)
-        break;
-    }
+    // The children acquire parent() and publish the marker before they disconnect.  Wait for
+    // that handshake first, then release the intercommunicator: the parent does not join the
+    // child's finalize, but it also does not race the child's MPI_Init/parent().
+    std::fprintf(stderr, "spawn: waiting for single-command child markers\n");
+    const bool all_markers = wait_for_markers(
+        [&] {
+          return std::filesystem::exists(single_dir / "0") and
+                 std::filesystem::exists(single_dir / "1");
+        },
+        60.0);
     BOOST_TEST(all_markers);
+    if (all_parents_ready(all_markers)) {
+      children.disconnect();
+    } else {
+      // A child that died before publishing will never enter disconnect; releasing the handle
+      // locally keeps the failed test from turning into another 300 s CTest timeout.
+      (void)children.release();
+    }
     if (all_markers) {
       for (const char* child : {"0", "1"}) {
         std::ifstream marker{single_dir / child};
@@ -881,24 +916,30 @@ BOOST_AUTO_TEST_CASE(spawn_single_and_multiple) {
   if (rank == 0)
     spawned.add(commands[0], 1).add(commands[1], 2);
   {
+    std::fprintf(stderr, "spawn: spawn_multiple\n");
     mp1::communicator children = mp1::spawn_multiple(world, 0, spawned);
     BOOST_TEST(children.is_valid());
     BOOST_TEST(children.is_inter());
     BOOST_TEST(children.remote_size() == 3);
-    // Same immediate release as the single-command case: the marker is published before the
-    // child's disconnect, and the parent must not wait for the remote group to exit first.
-    children.disconnect();
-
-    bool all_markers = false;
-    const double deadline = MPI_Wtime() + 60.0;
-    while (MPI_Wtime() < deadline) {
-      all_markers = std::filesystem::exists(multiple_dir / "0") and
-                    std::filesystem::exists(multiple_dir / "1") and
-                    std::filesystem::exists(multiple_dir / "2");
-      if (all_markers)
-        break;
-    }
+    // Same handshake as the single-command case: the children acquire parent() and publish
+    // their markers before disconnecting, so the parent can wait for the files and then release
+    // the intercomm without joining the children's finalize.
+    std::fprintf(stderr, "spawn: waiting for spawn_multiple child markers\n");
+    const bool all_markers = wait_for_markers(
+        [&] {
+          return std::filesystem::exists(multiple_dir / "0") and
+                 std::filesystem::exists(multiple_dir / "1") and
+                 std::filesystem::exists(multiple_dir / "2");
+        },
+        60.0);
     BOOST_TEST(all_markers);
+    if (all_parents_ready(all_markers)) {
+      children.disconnect();
+    } else {
+      // A child that died before publishing will never enter disconnect; releasing the handle
+      // locally keeps the failed test from turning into another 300 s CTest timeout.
+      (void)children.release();
+    }
     if (all_markers) {
       // The remote-group rank order of MPI_Comm_spawn_multiple is implementation-defined in
       // practice; assert the command multiplicity and argv instead of the rank assignment.

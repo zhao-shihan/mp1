@@ -346,7 +346,9 @@ versions and configurations are recorded in the release evidence.
   If a provider rejects a type that MPI permits, use a contiguous homogeneous
   variant or a predefined datatype, or use raw MPI.
 - **User-defined `MPI_Op` over a derived datatype.** Some providers can return
-  a corrupted reduction result for this raw-MPI combination. It is a provider
+  a corrupted reduction result for this raw-MPI combination. The
+  `raw_mpi_op_keeps_native_datatype` case is skipped on Intel MPI 2021.19.0,
+  the configuration observed in CI; later Intel builds run it. It is a provider
   limitation, not an mp1 contract; mp1 does not rewrite or pack the datatype to
   work around it. Use a predefined datatype/operator, pack the elements
   yourself, or use another provider/configuration.
@@ -428,10 +430,11 @@ versions and configurations are recorded in the release evidence.
   OUT parameter that cannot express the size), but the C-only build does not
   provide the F90 mapping; the layout rejection test skips only the positive
   size sanity check and still checks the rejection and combiner contract. A
-  custom C++ trait mapped to such a zero-extent Fortran datatype is rejected by
-  the `native_datatype<T>()` validation; the allreduce and RMA tests skip their
-  data-movement part for that configuration; the allreduce path also asserts
-  that the reduction throws `std::invalid_argument` instead of sending.
+  custom C++ trait mapped to such a null or zero-extent Fortran datatype is
+  rejected by the `native_datatype<T>()` validation; the allreduce test skips
+  its data-movement assertions and asserts that the reduction throws
+  `std::invalid_argument` instead of sending, and the RMA test skips its
+  usable-wire/category assertion.
 - **Intel MPI 2021.19 persistent collectives.** Reusing persistent requests
   across cycles can return stale or undefined payloads. The reuse-heavy
   gather/scatter, allgather/alltoall and intercommunicator cases (including the

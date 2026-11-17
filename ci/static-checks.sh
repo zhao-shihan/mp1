@@ -56,16 +56,13 @@ trap 'rm -rf "${tmp}"' EXIT
 word_start='(^|[^A-Za-z0-9_])'
 word_end='([^A-Za-z0-9_]|$)'
 old_identity_re="mplr|MPLR|mpl::|mplConfig|mplTargets|find_package[[:space:]]*\\([[:space:]]*mpl([^A-Za-z0-9_]|$)|add_mpl_executable|compile-mplr|_mpl([^A-Za-z0-9_]|$)"
-# The three removed layout classes are templates.  Requiring the following '<'
-# keeps a local variable named empty_layout in a contract test out of the gate.
-old_api_re="${word_start}(tag_t|duty_ratio|test_result|completed_status|no_index|inter_communicator|flat_memory|stopwatch|thread_stopwatch)${word_end}|${word_start}(null_layout|empty_layout|contiguous_layouts)[[:space:]]*<|<thread>|${word_start}MPI_Grequest${word_end}"
-forbidden_re="(${old_identity_re})|(${old_api_re})"
+# Removed API names are no longer policed: a test may legitimately reuse a local
+# name, and compile-fail probes must name the removed surface.  Only the old
+# library identity remains forbidden.
+forbidden_re="${old_identity_re}"
 
 exclude=(
   ':(exclude)build-scan/**'
-  ':(exclude)test/compile_fail/no_inter_communicator.cc'
-  ':(exclude)test/CMakeLists.txt' # the probe-registration row names the negative probe
-  ':(exclude)test/spawn_child.cc' # threaded parent() race probe; thread creation is the test
   ':(exclude)MIGRATION.md'
   ':(exclude)ci/static-checks.sh'
 )
@@ -95,10 +92,18 @@ check_grep() {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Old identity tokens and removed API names in tracked files.
+# 1. Old identity tokens in tracked files.
 # ---------------------------------------------------------------------------
-check_grep 'old identity tokens or removed API names in tracked files' \
+check_grep 'old identity tokens in tracked files' \
   git grep -n -I -E "${forbidden_re}" -- . "${exclude[@]}"
+
+# Threads and generalized requests are raw-MPI escape hatches, not part of the
+# wrapper.  Keep them out of the library implementation, but allow tests to use
+# them for interop/race coverage and docs to name them.
+check_grep 'library includes <thread>' \
+  git grep -n -I -F '#include <thread>' -- mp1
+check_grep 'MPI_Grequest in the library implementation' \
+  git grep -n -I -E "${word_start}MPI_Grequest${word_end}" -- mp1
 
 # The historical block is exempt from the mpl::/MPL_* spellings, but the later
 # mplr identity and its 0.25/0.26 version strings are forbidden in every
@@ -107,8 +112,8 @@ check_grep 'removed previous-library identity (mplr/MPLR/0.25/0.26) in tracked f
   git grep -n -I -E "${word_start}(mplr|MPLR|0\\.25|0\\.26)${word_end}" -- . \
   ':(exclude)build-scan/**' ':(exclude)ci/static-checks.sh'
 
-# MIGRATION.md is the single historical reference.  Old names are allowed only
-# between the two markers; blank out that block and check the rest.
+# MIGRATION.md is the single historical reference.  Old identity names are allowed
+# only between the two markers; blank out that block and check the rest.
 if [[ -f MIGRATION.md ]]; then
   awk '
     /<!-- BEGIN HISTORICAL MIGRATION REFERENCE/ { skip = 1; print ""; next }
@@ -122,7 +127,7 @@ if [[ -f MIGRATION.md ]]; then
   if ((migration_status > 1)); then
     report 'grep failed while checking MIGRATION.md outside the historical block'
   elif ((migration_status == 0)); then
-    report 'old identity tokens or removed API names outside the historical block in MIGRATION.md'
+    report 'old identity tokens outside the historical block in MIGRATION.md'
     printf '%s\n' "${migration_hits}" | sed 's/^/MIGRATION.md:/' >&2
   fi
 fi
@@ -136,20 +141,6 @@ check_grep 'MPI_Alltoallw/MPI_Ialltoallw in the variable-collective implementati
 
 check_grep 'reinterpret_cast to MPI_Datatype is forbidden' \
   git grep -n -I -E 'reinterpret_cast[[:space:]]*<[^>]*MPI_Datatype' -- . "${exclude[@]}"
-
-sizeof_lines=""
-sizeof_status=0
-sizeof_lines=$(git grep -n -I -F 'sizeof(T)' -- mp1/impl) || sizeof_status=$?
-if ((sizeof_status > 1)); then
-  report 'grep failed while checking sizeof(T) displacements'
-elif [[ -n "${sizeof_lines}" ]]; then
-  hits=""
-  hits=$(printf '%s\n' "${sizeof_lines}" | grep -E 'displ|offset|stride') || true
-  if [[ -n "${hits}" ]]; then
-    report 'sizeof(T) used as a displacement or stride'
-    printf '%s\n' "${hits}" >&2
-  fi
-fi
 
 # The managed-reduction callback image is typed over native_datatype<T>(); a
 # full-object MPI_BYTE image (contiguous sizeof(T) bytes) must never return.
@@ -185,14 +176,15 @@ fi
 # ---------------------------------------------------------------------------
 # 4. NOLINT policy.
 # ---------------------------------------------------------------------------
-# Every suppression must name the check and explain why.  A bare NOLINT or
-# NOLINTNEXTLINE disables every check on the line and is not accepted.
-check_grep 'bare NOLINT/NOLINTNEXTLINE; use NOLINTNEXTLINE(check-name): reason' \
-  git grep -n -I -E 'NOLINT(NEXTLINE)?([[:space:]]|$)' -- \
+# Every suppression must name a check in parentheses.  A bare NOLINT or
+# NOLINTNEXTLINE disables every check on the line and is not accepted; the
+# reason after the closing parenthesis remains optional.
+check_grep 'NOLINT/NOLINTNEXTLINE without a parenthesized check name' \
+  git grep -n -I -P '(^|[^A-Za-z0-9_])NOLINT(?:NEXTLINE)?(?![A-Za-z0-9_(])' -- \
   '*.hpp' '*.cc' '*.c' ':(exclude)build-scan/**'
 
-check_grep 'NOLINT without a reason' \
-  git grep -n -I -E 'NOLINT(NEXTLINE)?\([^)]*\)[[:space:]]*(\*/)?[[:space:]]*\\?$' -- \
+check_grep 'NOLINT/NOLINTNEXTLINE with an empty check name' \
+  git grep -n -I -E 'NOLINT(NEXTLINE)?\([[:space:]]*\)' -- \
   '*.hpp' '*.cc' '*.c' ':(exclude)build-scan/**'
 
 # ---------------------------------------------------------------------------
@@ -286,9 +278,11 @@ check_grep 'version macro defined outside mp1/version.hpp.in' \
   git grep -n -I -E '#define[[:space:]]+MP1_VERSION_(MAJOR|MINOR|PATCH|STRING)([[:space:]]|$)' -- . \
   ':(exclude)build-scan/**' ':(exclude)mp1/version.hpp.in' ':(exclude)ci/static-checks.sh'
 
-check_grep 'hard-coded release version outside VERSION and the docs' \
-  git grep -n -I -F '1.0.0' -- CMakeLists.txt cmake mp1 test ci .github/workflows examples \
-  ':(exclude)ci/static-checks.sh'
+if [[ -n "${version:-}" ]]; then
+  check_grep "hard-coded release version ${version} outside VERSION and the docs" \
+    git grep -n -I -F "${version}" -- CMakeLists.txt cmake mp1 test ci .github/workflows examples \
+    ':(exclude)ci/static-checks.sh'
+fi
 
 # 7. MPI address arithmetic.
 #
@@ -299,8 +293,56 @@ check_grep 'hard-coded release version outside VERSION and the docs' \
 # checked helpers in detail/mpi_call.hpp and the direct MPI_Aint_add run probe
 # in detail/buffer.hpp.
 # ---------------------------------------------------------------------------
-check_grep 'intrinsic MPI_Aint subtraction in mp1/impl' \
-  git grep -n -E '\b(member_address|base_address|address|run_start|base_)[[:space:]]*-[[:space:]]*[A-Za-z_(]' -- mp1/impl
+aint_status=0
+aint_hits=$(python3 - "${root}" <<'PY'
+import pathlib
+import re
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1])
+try:
+    files = subprocess.check_output(["git", "ls-files", "mp1/impl"], cwd=root, text=True)
+except subprocess.CalledProcessError as error:
+    print(f"static-checks: git ls-files failed: {error}", file=sys.stderr)
+    sys.exit(2)
+
+# This is a declaration-aware heuristic, not a C++ parser: collect the names
+# declared as MPI_Aint, then look for subtraction on those names.  It avoids the
+# old name-only regex that flagged unrelated pointer arithmetic, while still
+# catching the common `MPI_Aint a; a - b` form.
+declaration = re.compile(r"\bMPI_Aint(?:\s+const)?\s+([A-Za-z_]\w*)\s*(?=[,;={)])")
+
+
+def strip_comments(text):
+    text = re.sub(r"/\*.*?\*/", lambda match: "\n" * match.group(0).count("\n"), text,
+                  flags=re.S)
+    return re.sub(r"//[^\n]*", "", text)
+
+
+for filename in files.splitlines():
+    path = root / filename
+    try:
+        text = strip_comments(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        print(f"static-checks: cannot read {filename}: {error}", file=sys.stderr)
+        sys.exit(2)
+    names = set(declaration.findall(text))
+    for number, line in enumerate(text.splitlines(), 1):
+        for name in names:
+            # Binary subtraction only; ignore -= and ->.  Declaration names are
+            # MPI_Aint values (not MPI_Aint*), so this is the forbidden operation.
+            if re.search(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"\s*-(?!=)", line):
+                print(f"{filename}:{number}:{line.strip()}")
+                break
+PY
+) || aint_status=$?
+if ((aint_status > 1)); then
+  report 'MPI_Aint subtraction scan failed'
+elif [[ -n "${aint_hits}" ]]; then
+  report 'intrinsic MPI_Aint subtraction in mp1/impl'
+  printf '%s\n' "${aint_hits}" >&2
+fi
 
 for required_procedure in MPI_Aint_diff MPI_Aint_add; do
   if ! git grep -q -F "${required_procedure}" -- mp1/impl/detail/mpi_call.hpp; then

@@ -234,16 +234,21 @@ BOOST_AUTO_TEST_CASE(allreduce_scalar_and_operators) {
   static_assert(
       not mp1::detail::is_predefined_reduction_functor_v<allreduce_fortran_int,
                                                          std::plus<allreduce_fortran_int>>);
-  // Open MPI built without Fortran support exposes MPI_INTEGER with zero extent; the
-  // native_datatype<T>() validator rejects the trait before the reduction call.  That is a
-  // fail-closed rejection, not a usable wire type in this configuration.
+  // A C-only provider exposes no usable Fortran binding: MPICH built with --disable-fortran
+  // defines MPI_INTEGER as MPI_DATATYPE_NULL, and Open MPI built without Fortran gives it zero
+  // extent.  Querying a null handle is erroneous, so check it before MPI_Type_get_extent.
+  // Both forms reach the native_datatype<T>() validator, which rejects the trait before the
+  // reduction call; that is a fail-closed rejection, not a usable wire type here.
   MPI_Aint fortran_lb = 0;
   MPI_Aint fortran_extent = 0;
-  BOOST_REQUIRE(MPI_Type_get_extent(MPI_INTEGER, &fortran_lb, &fortran_extent) == MPI_SUCCESS);
-  if (fortran_extent == 0) {
+  const bool fortran_available = MPI_INTEGER != MPI_DATATYPE_NULL;
+  if (fortran_available)
+    BOOST_REQUIRE(MPI_Type_get_extent(MPI_INTEGER, &fortran_lb, &fortran_extent) ==
+                  MPI_SUCCESS);
+  if (not fortran_available or fortran_extent == 0) {
     BOOST_TEST_MESSAGE(
-        "allreduce_fortran_int data movement skipped: MPI_INTEGER has zero extent on this "
-        "C-only provider; native_datatype validation rejects the trait first");
+        "allreduce_fortran_int data movement skipped: MPI_INTEGER is unavailable or has zero "
+        "extent on this C-only provider; native_datatype validation rejects the trait first");
     allreduce_fortran_int raw_in{rank + 1};
     allreduce_fortran_int raw_out{};
     BOOST_CHECK_THROW(mp1::allreduce(comm, MPI_SUM, raw_in, raw_out), std::invalid_argument);

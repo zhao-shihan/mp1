@@ -1553,16 +1553,21 @@ BOOST_AUTO_TEST_CASE(custom_predefined_trait_classified_before_mpi) {
               mp1::detail::rma_datatype_category::c_integer));
   BOOST_TEST((mp1::detail::rma_datatype_category_of<rma_custom_bool>() ==
               mp1::detail::rma_datatype_category::invalid));
-  // Open MPI built without Fortran support exposes MPI_INTEGER with zero extent; the
-  // native_datatype<T>() validator then rejects the trait before the category classifier.
-  // That is still a fail-closed rejection, but it is not the category path.
+  // A C-only provider exposes no usable Fortran binding: MPICH built with --disable-fortran
+  // defines MPI_INTEGER as MPI_DATATYPE_NULL, and Open MPI built without Fortran gives it zero
+  // extent.  Querying a null handle is erroneous, so check it before MPI_Type_get_extent.
+  // Either form is rejected by native_datatype<T>() before the category classifier; that is
+  // still a fail-closed rejection, but it is not the category path.
   MPI_Aint fortran_lb = 0;
   MPI_Aint fortran_extent = 0;
-  BOOST_REQUIRE(MPI_Type_get_extent(MPI_INTEGER, &fortran_lb, &fortran_extent) == MPI_SUCCESS);
-  if (fortran_extent == 0) {
+  const bool fortran_available = MPI_INTEGER != MPI_DATATYPE_NULL;
+  if (fortran_available)
+    BOOST_REQUIRE(MPI_Type_get_extent(MPI_INTEGER, &fortran_lb, &fortran_extent) ==
+                  MPI_SUCCESS);
+  if (not fortran_available or fortran_extent == 0) {
     BOOST_TEST_MESSAGE(
-        "rma_fortran_int category check skipped: MPI_INTEGER has zero extent on this "
-        "C-only provider; native_datatype validation rejects the trait first");
+        "rma_fortran_int category check skipped: MPI_INTEGER is unavailable or has zero "
+        "extent on this C-only provider; native_datatype validation rejects the trait first");
     BOOST_TEST(throws_invalid(
         [&] { (void)mp1::detail::rma_datatype_category_of<rma_fortran_int>(); }));
   } else {
