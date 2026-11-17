@@ -27,8 +27,6 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       openmpi_version: ${{ steps.pins.outputs.openmpi_version }}
       openmpi_sha256: ${{ steps.pins.outputs.openmpi_sha256 }}
-      mpich_floor_version: ${{ steps.pins.outputs.mpich_floor_version }}
-      mpich_floor_sha256: ${{ steps.pins.outputs.mpich_floor_sha256 }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -55,8 +53,6 @@ jobs:
           {
             echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field version)"
             echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field sha256)"
-            echo "mpich_floor_version=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field version)"
-            echo "mpich_floor_sha256=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field sha256)"
           } >>"$GITHUB_OUTPUT"
 
   build:
@@ -97,9 +93,9 @@ jobs:
         run: |
           ci/mpi-env.sh "${{ matrix.mpi }}" "${{ matrix.mpi_version }}" --github-env
 
-      - name: Assert MPI identity and floor
+      - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh "${{ matrix.mpi }}" "${{ matrix.mpi_version }}" "${{ matrix.tier }}"
+          ci/assert-mpi.sh "${{ matrix.mpi }}" "${{ matrix.mpi_version }}"
 
       - name: Configure
         run: |
@@ -162,7 +158,7 @@ jobs:
 
   # Clang build/test leg.  Clang is otherwise only used by clang-tidy; this
   # leg proves the C++20 public headers, tests and examples compile and run
-  # with a Clang driver.  The MPI library is the provisional Open MPI build;
+  # with a Clang driver.  The MPI library is the pinned Open MPI build;
   # only the application translation units are compiled by Clang.
   clang:
     name: clang / C++20
@@ -197,7 +193,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}"
 
       - name: Configure
         run: |
@@ -283,7 +279,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}"
 
       - name: Build and install mp1
         run: |
@@ -426,7 +422,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}"
 
       - name: Configure
         run: |

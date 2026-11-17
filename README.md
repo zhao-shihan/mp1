@@ -904,7 +904,7 @@ whose native datatype cannot be decoded into the transmitted byte map
 map) is rejected with `std::invalid_argument` before the reduction.
 `reduce_scatter` and `reduce_scatter_block` additionally require the image's
 true extent to equal `sizeof(T)` (no leading or trailing unmapped bytes):
-MPICH 4.3.2 (the CI floor) lays those callbacks out at the true extent, so
+MPICH 4.3.2 (the CI MPICH pin) lays those callbacks out at the true extent, so
 mp1 rejects a gapped image for those two families before MPI. All other reduction
 families accept the same gapped image.
 

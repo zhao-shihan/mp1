@@ -9,8 +9,6 @@
 #
 # Exclusions:
 #   build-scan/**  untracked scratch reports
-#   test/compile_fail/no_inter_communicator.cc
-#                  negative probe that must name the removed identifiers
 #   MIGRATION.md   only its marked historical reference block may use the
 #                  mpl 0.5.0 names; mplr/MPLR/0.25/0.26 are forbidden everywhere
 
@@ -332,7 +330,7 @@ for filename in files.splitlines():
         for name in names:
             # Binary subtraction only; ignore -= and ->.  Declaration names are
             # MPI_Aint values (not MPI_Aint*), so this is the forbidden operation.
-            if re.search(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"\s*-(?!=)", line):
+            if re.search(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"\s*-(?![=>])", line):
                 print(f"{filename}:{number}:{line.strip()}")
                 break
 PY

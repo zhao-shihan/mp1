@@ -1,12 +1,12 @@
 {
-  "schema": 2,
-  "mpi_floor": "4.1",
+  "schema": 3,
+  "mpi_minimum": "4.1",
   "notes": [
-    "The floor entry must advertise exactly MPI 4.1 (MPI 4.1 section 9.1.1): it is the oldest implementation the project supports.",
+    "Every provider must advertise MPI 4.1 or newer; MPICH 4.3.2 advertises MPI 4.1.",
     "A tarball provider is pinned by URL and SHA256; install-mpi.sh verifies the checksum before extraction.",
     "A oneapi-apt provider is installed from Intel's official oneAPI apt repository and tracks the latest package in that channel. It is not in the Ubuntu archive; the apt repository is the supported channel.",
     "The oneapi-apt packages are intentionally not pinned to an exact build; ci/assert-mpi.sh fails closed if the installed provider version no longer matches the matrix version.",
-    "Open MPI 6.0.0rc3 is provisional: no Open MPI 6.0 stable exists, and an RC never substitutes for the floor.",
+    "Open MPI 6.0.0rc3 is the current Open MPI release candidate.",
     "require_features is an opt-in, job-specific feature gate: list 'shared' only for a provider that exposes a multi-process shared-memory domain. A provider without that capability stays in the matrix without 'shared', and the shared-memory scenario may skip there."
   ],
   "providers": [
@@ -14,7 +14,6 @@
       "id": "mpich-4.3.2",
       "family": "mpich",
       "version": "4.3.2",
-      "tier": "floor",
       "advertised_mpi_version": "4.1",
       "install": "tarball",
       "url": "https://www.mpich.org/static/downloads/4.3.2/mpich-4.3.2.tar.gz",
@@ -24,7 +23,6 @@
       "id": "openmpi-6.0.0rc3",
       "family": "openmpi",
       "version": "6.0.0rc3",
-      "tier": "provisional",
       "advertised_mpi_version": "5.0",
       "install": "tarball",
       "url": "https://download.open-mpi.org/release/open-mpi/v6.0/openmpi-6.0.0rc3.tar.bz2",
@@ -34,7 +32,6 @@
       "id": "intel-2021.19",
       "family": "intel",
       "version": "2021.19",
-      "tier": "stable",
       "advertised_mpi_version": "4.1",
       "install": "oneapi-apt",
       "apt_packages": [
@@ -48,7 +45,7 @@
     "pr": [
       {
         "provider": "mpich-4.3.2",
-        "name": "floor-mpich-4.3.2-debug",
+        "name": "mpich-4.3.2-debug",
         "build_type": "Debug",
         "compile_fail": true,
         "example_smoke": true,
@@ -58,7 +55,7 @@
       },
       {
         "provider": "openmpi-6.0.0rc3",
-        "name": "provisional-openmpi-6.0.0rc3-debug",
+        "name": "openmpi-6.0.0rc3-debug",
         "build_type": "Debug",
         "compile_fail": true,
         "example_smoke": true,
@@ -69,7 +66,7 @@
       },
       {
         "provider": "intel-2021.19",
-        "name": "stable-intel-2021.19-debug",
+        "name": "intel-2021.19-debug",
         "build_type": "Debug",
         "compile_fail": false,
         "example_smoke": true,
@@ -81,7 +78,7 @@
     "nightly": [
       {
         "provider": "mpich-4.3.2",
-        "name": "floor-mpich-4.3.2-debug",
+        "name": "mpich-4.3.2-debug",
         "build_type": "Debug",
         "compile_fail": true,
         "example_smoke": true,
@@ -92,7 +89,7 @@
       },
       {
         "provider": "openmpi-6.0.0rc3",
-        "name": "provisional-openmpi-6.0.0rc3-debug",
+        "name": "openmpi-6.0.0rc3-debug",
         "build_type": "Debug",
         "compile_fail": true,
         "example_smoke": true,
@@ -104,7 +101,7 @@
       },
       {
         "provider": "intel-2021.19",
-        "name": "stable-intel-2021.19-debug",
+        "name": "intel-2021.19-debug",
         "build_type": "Debug",
         "compile_fail": true,
         "example_smoke": true,

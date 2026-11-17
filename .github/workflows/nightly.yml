@@ -26,8 +26,8 @@ jobs:
     outputs:
       openmpi_version: ${{ steps.pins.outputs.openmpi_version }}
       openmpi_sha256: ${{ steps.pins.outputs.openmpi_sha256 }}
-      mpich_floor_version: ${{ steps.pins.outputs.mpich_floor_version }}
-      mpich_floor_sha256: ${{ steps.pins.outputs.mpich_floor_sha256 }}
+      mpich_version: ${{ steps.pins.outputs.mpich_version }}
+      mpich_sha256: ${{ steps.pins.outputs.mpich_sha256 }}
       intel_version: ${{ steps.pins.outputs.intel_version }}
       intel_apt_packages: ${{ steps.pins.outputs.intel_apt_packages }}
     steps:
@@ -42,14 +42,14 @@ jobs:
           {
             echo "openmpi_version=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field version)"
             echo "openmpi_sha256=$(python3 ci/matrix-plan.py --provider openmpi-6.0.0rc3 --field sha256)"
-            echo "mpich_floor_version=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field version)"
-            echo "mpich_floor_sha256=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field sha256)"
+            echo "mpich_version=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field version)"
+            echo "mpich_sha256=$(python3 ci/matrix-plan.py --provider mpich-4.3.2 --field sha256)"
             echo "intel_version=$(python3 ci/matrix-plan.py --provider intel-2021.19 --field version)"
             echo "intel_apt_packages=$(python3 ci/matrix-plan.py --provider intel-2021.19 --field apt_packages)"
           } >>"$GITHUB_OUTPUT"
 
-  mpich-4-3-2-floor-debug:
-    name: mpich 4.3.2 floor debug
+  mpich-4-3-2-debug:
+    name: mpich 4.3.2 debug
     needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -68,23 +68,23 @@ jobs:
       - name: Cache MPI
         uses: actions/cache@v4
         with:
-          path: ~/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_floor_version }}
-          key: ${{ runner.os }}-${{ runner.arch }}-mpi-mpich-${{ needs.plan.outputs.mpich_floor_version }}-${{ needs.plan.outputs.mpich_floor_sha256 }}-v2
+          path: ~/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_version }}
+          key: ${{ runner.os }}-${{ runner.arch }}-mpi-mpich-${{ needs.plan.outputs.mpich_version }}-${{ needs.plan.outputs.mpich_sha256 }}-v2
 
-      - name: Install MPICH floor
+      - name: Install MPICH
         run: |
-          ci/install-mpi.sh mpich "${{ needs.plan.outputs.mpich_floor_version }}" \
-            "$HOME/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_floor_version }}" \
-            "${{ needs.plan.outputs.mpich_floor_sha256 }}"
+          ci/install-mpi.sh mpich "${{ needs.plan.outputs.mpich_version }}" \
+            "$HOME/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_version }}" \
+            "${{ needs.plan.outputs.mpich_sha256 }}"
 
       - name: Put MPI on PATH
         run: |
-          echo "$HOME/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_floor_version }}/bin" \
+          echo "$HOME/.cache/mp1-ci-mpi/mpich-${{ needs.plan.outputs.mpich_version }}/bin" \
             >> "$GITHUB_PATH"
 
-      - name: Assert MPI identity is exactly MPI 4.1
+      - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh mpich "${{ needs.plan.outputs.mpich_floor_version }}" floor
+          ci/assert-mpi.sh mpich "${{ needs.plan.outputs.mpich_version }}"
 
       - name: Configure
         run: |
@@ -119,7 +119,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-mpich-4.3.2-floor
+          name: nightly-mpich-4.3.2
           path: build/Testing/Temporary/LastTest.log
           if-no-files-found: warn
 
@@ -150,7 +150,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh intel "${{ needs.plan.outputs.intel_version }}" stable
+          ci/assert-mpi.sh intel "${{ needs.plan.outputs.intel_version }}"
 
       - name: Record MPI version
         run: |
@@ -230,7 +230,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}"
 
       - name: Record MPI version
         run: |
@@ -314,7 +314,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}"
 
       - name: Record MPI version
         run: |
@@ -392,7 +392,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}"
 
       - name: Configure for the compilation database
         run: |

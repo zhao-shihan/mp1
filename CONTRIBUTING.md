@@ -1,6 +1,6 @@
 # Contributing to mp1
 
-mp1 is a header-only C++20 library with an MPI 4.1 floor. The library target
+mp1 is a header-only C++20 library that requires MPI 4.1 or newer. The library target
 raises consumers to C++20 through `INTERFACE_COMPILE_FEATURES`; C++17 builds
 are rejected by `mp1/mp1.hpp` and the CMake compiler checks.
 

@@ -71,7 +71,7 @@ jobs:
 
       - name: Assert MPI identity
         run: |
-          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}" provisional
+          ci/assert-mpi.sh openmpi "${{ needs.plan.outputs.openmpi_version }}"
 
       - name: Configure for the compilation database
         run: |

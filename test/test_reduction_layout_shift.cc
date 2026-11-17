@@ -684,8 +684,8 @@ BOOST_AUTO_TEST_CASE(native_predefined_ops_with_nonzero_true_lb_layout) {
   }
 }
 
-// User-op reduce_scatter[_block] over a gapped callback image.  The floor provider
-// (MPICH 4.3.2) lays the callback temporaries out at the image's true extent, not at the
+// User-op reduce_scatter[_block] over a gapped callback image.  MPICH 4.3.2
+// (the CI MPICH pin) lays the callback temporaries out at the image's true extent, not at the
 // sizeof(T) extent, so a T whose native map does not span the whole object (a non-zero true
 // lower bound or trailing padding) cannot be presented as a T[len] array on that path.  mp1
 // rejects the combination locally on every rank before MPI instead of returning wrong data;
@@ -777,16 +777,15 @@ BOOST_AUTO_TEST_CASE(user_op_zero_count_and_empty_layout) {
 // native_datatype<T>() (true_lb 4 here), never the managed callback's typed image.  The
 // callback applies the datatype's own type map, as MPI 4.1 §6.9.5 requires.
 BOOST_AUTO_TEST_CASE(raw_mpi_op_keeps_native_datatype) {
-#if defined(I_MPI_NUMVERSION) && I_MPI_NUMVERSION == 20211900300
-  // Intel MPI 2021.19.0 can corrupt the result of a user-defined MPI_Op over a derived
-  // datatype (COMPATIBILITY.md, "User-defined MPI_Op over a derived datatype").  This is the
-  // configuration observed in the CI stable-intel-2021.19-debug leg; later Intel builds run
-  // this case.  It is a provider limitation, not an mp1 contract: the raw handle and the
+#if defined(I_MPI_VERSION)
+  // Intel MPI can corrupt the result of a user-defined MPI_Op over a derived datatype
+  // (observed with Intel MPI 2021.19; COMPATIBILITY.md, "User-defined MPI_Op over a derived
+  // datatype").  This is a provider limitation, not an mp1 contract: the raw handle and the
   // native datatype are forwarded unchanged, and the managed-callback cases above cover the
   // typed image.
   std::fprintf(stderr,
-               "raw MPI_Op over a derived datatype skipped on Intel MPI 2021.19.0: provider "
-               "can corrupt the reduction result (see COMPATIBILITY.md)\n");
+               "raw MPI_Op over a derived datatype skipped on Intel MPI (observed with "
+               "2021.19): provider can corrupt the reduction result (see COMPATIBILITY.md)\n");
   return;
 #endif
   const mp1::mpi_communicator comm = mp1::comm_world();

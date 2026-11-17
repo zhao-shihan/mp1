@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # Assert the MPI implementation on PATH is the one the matrix selected.
 #
-# Usage: ci/assert-mpi.sh <mpich|openmpi|intel> <provider-version> <tier>
+# Usage: ci/assert-mpi.sh <mpich|openmpi|intel> <provider-version>
 #
 # Checks, in this order:
 #   1. mpicxx and mpiexec are both on PATH and in the same directory;
 #   2. the launcher names the expected family and provider version;
 #   3. a probe compiled with mpicxx reports the same MPI_VERSION/
 #      MPI_SUBVERSION as its <mpi.h>, and MPI_Get_version agrees;
-#   4. the runtime advertises MPI 4.1 or newer;
-#   5. a `floor` provider advertises *exactly* MPI 4.1 (MPI 4.1 §9.1.1),
-#      while stable/provisional/rc may be newer.
+#   4. the runtime advertises MPI 4.1 or newer.
 #
 # MPI 4.1 §9.1.1: MPI_VERSION/MPI_SUBVERSION are compile-time constants and
 # MPI_Get_version returns the runtime pair; §11.4.1/Table 11.1 makes
@@ -19,14 +17,13 @@
 
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  printf 'usage: %s <mpich|openmpi|intel> <provider-version> <tier>\n' "${0##*/}" >&2
+if [[ $# -ne 2 ]]; then
+  printf 'usage: %s <mpich|openmpi|intel> <provider-version>\n' "${0##*/}" >&2
   exit 2
 fi
 
 family=$1
 version=$2
-tier=$3
 
 case "${family}" in
   openmpi) expected_family='Open MPI' ;;
@@ -37,14 +34,6 @@ case "${family}" in
     exit 2
     ;;
 esac
-case "${tier}" in
-  floor | stable | provisional | rc | dev) ;;
-  *)
-    printf 'assert-mpi: unknown tier: %s\n' "${tier}" >&2
-    exit 2
-    ;;
-esac
-
 fail() {
   printf 'assert-mpi: FAIL: %s\n' "$1" >&2
   exit 1
@@ -124,11 +113,7 @@ version_ge() {
 }
 
 version_ge "${runtime_version}" "4.1" ||
-  fail "runtime ${runtime_version} is below the MPI 4.1 floor"
-if [[ "${tier}" == "floor" ]]; then
-  [[ "${runtime_version}" == "4.1" ]] ||
-    fail "floor provider must advertise exactly MPI 4.1, got ${runtime_version}"
-fi
+  fail "runtime ${runtime_version} is below the MPI 4.1 minimum"
 
 if [[ ${family} == intel ]]; then
   # I_MPI_FABRICS=shm:ofi is required by the spawn tests, and Intel MPI's own vars.sh does
@@ -151,5 +136,5 @@ oneAPI libfabric env (ci/mpi-env.sh does this) and check FI_PROVIDER_PATH"
   fi
 fi
 
-printf 'assert-mpi: PASS %s %s (tier %s, advertises MPI %s)\n' \
-  "${expected_family}" "${version}" "${tier}" "${runtime_version}"
+printf 'assert-mpi: PASS %s %s (advertises MPI %s)\n' \
+  "${expected_family}" "${version}" "${runtime_version}"

@@ -3,9 +3,8 @@
 
 The JSON file is the single source of truth for the MPI pins.  This script is
 the only place that maps a provider pin to the workflow matrix fields; it
-fails closed on a missing checksum, a second floor entry, a floor that does not
-advertise exactly MPI 4.1, a profile without a floor, or a profile without a
-newer-than-floor provider.
+fails closed on a missing checksum, an unknown family/install kind, or a
+provider that does not advertise MPI 4.1 or newer.
 
 Usage:
     ci/matrix-plan.py --profile pr|nightly [--format github|json|text]
@@ -23,20 +22,22 @@ import re
 import sys
 
 MATRIX = pathlib.Path(__file__).with_name("mpi-matrix.json")
-FLOOR = "4.1"
+MINIMUM = "4.1"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-TIERS = {"floor", "stable", "provisional", "rc", "dev"}
 FAMILIES = {"mpich", "openmpi", "intel"}
 INSTALL_KINDS = {"tarball", "oneapi-apt"}
 REQUIRED_PROVIDER = {
     "id",
     "family",
     "version",
-    "tier",
     "advertised_mpi_version",
     "install",
 }
 REQUIRED_PROFILE = {"provider", "name", "build_type"}
+
+
+def version_tuple(value: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in re.findall(r"[0-9]+", value))
 
 
 def fail(message: str) -> None:
@@ -52,10 +53,10 @@ def load() -> dict:
     except json.JSONDecodeError as error:
         fail(f"invalid JSON in {MATRIX}: {error}")
 
-    if data.get("schema") != 2:
+    if data.get("schema") != 3:
         fail(f"{MATRIX}: unsupported schema {data.get('schema')!r}")
-    if data.get("mpi_floor") != FLOOR:
-        fail(f"{MATRIX}: mpi_floor must be {FLOOR!r}")
+    if data.get("mpi_minimum") != MINIMUM:
+        fail(f"{MATRIX}: mpi_minimum must be {MINIMUM!r}")
 
     providers = data.get("providers")
     if not isinstance(providers, list) or not providers:
@@ -70,8 +71,6 @@ def load() -> dict:
         ids.add(provider["id"])
         if provider["family"] not in FAMILIES:
             fail(f"{provider['id']}: unknown family {provider['family']!r}")
-        if provider["tier"] not in TIERS:
-            fail(f"{provider['id']}: unknown tier {provider['tier']!r}")
         install = provider["install"]
         if install not in INSTALL_KINDS:
             fail(f"{provider['id']}: unknown install kind {install!r}")
@@ -99,34 +98,13 @@ def load() -> dict:
                     f"{provider['id']}: oneapi-apt provider must not carry "
                     "url/sha256 (it is not a tarball)"
                 )
-        if not re.match(r"^[0-9]+(\.[0-9]+)+", provider["advertised_mpi_version"]):
+        advertised = provider["advertised_mpi_version"]
+        if not re.match(r"^[0-9]+(\.[0-9]+)+", advertised):
             fail(f"{provider['id']}: advertised_mpi_version is not a version")
-
-    floors = [provider for provider in providers if provider["tier"] == "floor"]
-    if len(floors) != 1:
-        fail(f"exactly one floor provider is required, found {len(floors)}")
-    if floors[0]["advertised_mpi_version"] != FLOOR:
-        fail(
-            "the floor provider must advertise exactly MPI "
-            f"{FLOOR} (it is the oldest supported implementation)"
-        )
-
-    # A family that is present must have a blocking release pin: the floor is
-    # blocking by definition, as are stable/provisional entries.  rc/dev-only
-    # families are rejected because an RC never replaces a release.
-    for family in FAMILIES:
-        family_entries = [entry for entry in providers if entry["family"] == family]
-        if not family_entries:
-            continue
-        blocking = [
-            entry
-            for entry in family_entries
-            if entry["tier"] in {"floor", "stable", "provisional"}
-        ]
-        if not blocking:
+        if version_tuple(advertised) < version_tuple(MINIMUM):
             fail(
-                f"family {family!r} has no blocking provider "
-                "(floor/stable/provisional)"
+                f"{provider['id']}: advertised MPI {advertised} is below "
+                f"the minimum {MINIMUM}"
             )
 
     profiles = data.get("profiles")
@@ -137,8 +115,6 @@ def load() -> dict:
         if not isinstance(rows, list) or not rows:
             fail(f"profile {name!r} must be a non-empty list")
         profile_ids = set()
-        floor_seen = False
-        newer_seen = False
         for row in rows:
             missing = REQUIRED_PROFILE - row.keys()
             if missing:
@@ -157,15 +133,13 @@ def load() -> dict:
             if provider_id in profile_ids:
                 fail(f"profile {name!r} repeats provider {provider_id!r}")
             profile_ids.add(provider_id)
-            provider = by_id[provider_id]
-            if provider["tier"] == "floor":
-                floor_seen = True
-            elif provider["tier"] != "rc":
-                newer_seen = True
-        if not floor_seen:
-            fail(f"profile {name!r} does not include the floor provider")
-        if not newer_seen:
-            fail(f"profile {name!r} has no newer-than-floor provider")
+
+        if not any(
+            version_tuple(by_id[provider_id]["advertised_mpi_version"])
+            == version_tuple(MINIMUM)
+            for provider_id in profile_ids
+        ):
+            fail(f"profile {name!r} does not exercise an MPI {MINIMUM} provider")
 
     return data
 
@@ -190,8 +164,6 @@ def matrix_rows(data: dict, profile: str) -> list:
             "mpi_sha256": provider.get("sha256", ""),
             "mpi_url": provider.get("url", ""),
             "runs_on": entry.get("runs_on", provider.get("runs_on", "ubuntu-24.04")),
-            "tier": provider["tier"],
-            "expected_mpi_version": provider["advertised_mpi_version"],
             "build_type": entry["build_type"],
             "cxx_flags": entry.get("cxx_flags", ""),
             "mpiexec_preflags": entry.get(
@@ -208,7 +180,6 @@ def matrix_rows(data: dict, profile: str) -> list:
 
 def print_text(data: dict, profile: str, rows: list) -> None:
     print(f"profile: {profile}")
-    print(f"floor:   MPI {data['mpi_floor']} (must be advertised exactly)")
     for row in rows:
         checks = []
         if row["compile_fail"]:
@@ -220,7 +191,7 @@ def print_text(data: dict, profile: str, rows: list) -> None:
         flags = " ".join(checks) if checks else "-"
         print(
             f"  {row['name']:<38} {row['mpi']:<8} {row['mpi_version']:<10} "
-            f"{row['install']:<12} {row['tier']:<11} {row['build_type']:<8} {flags}"
+            f"{row['install']:<12} {row['build_type']:<8} {flags}"
         )
 
 
@@ -240,7 +211,7 @@ def check_pin(data: dict, family: str, version: str, sha: str | None) -> None:
             f"pin {family} {version} has sha256 {matches[0].get('sha256')}, "
             f"not the supplied {sha}"
         )
-    print(f"pin ok: {matches[0]['id']} ({matches[0]['tier']})")
+    print(f"pin ok: {matches[0]['id']}")
 
 
 def main() -> int:
@@ -264,7 +235,6 @@ def main() -> int:
             "install",
             "apt_packages",
             "sha256",
-            "tier",
             "advertised_mpi_version",
         ],
     )
@@ -292,8 +262,7 @@ def main() -> int:
         for provider in data["providers"]:
             print(
                 f"{provider['id']:<24} {provider['family']:<8} "
-                f"{provider['version']:<10} {provider['tier']:<11} "
-                f"advertises MPI {provider['advertised_mpi_version']}"
+                f"{provider['version']:<10} advertises MPI {provider['advertised_mpi_version']}"
             )
         return 0
     if args.check_pin:

@@ -1,10 +1,10 @@
-# Self-check for the configure-time MPI floor gate (cmake/MP1MpiVersion.cmake).
+# Self-check for the configure-time MPI minimum-version gate (cmake/MP1MpiVersion.cmake).
 #
 # MPI 4.1 §9.1.1 defines the compile-time MPI_VERSION/MPI_SUBVERSION macros and
-# the runtime MPI_Get_version pair.  The project floor is 4.1: 3.1 and 4.0 must
-# be rejected by configure, while 4.1 (the floor leg) and newer majors are
+# the runtime MPI_Get_version pair.  The project minimum is 4.1: 3.1 and 4.0 must
+# be rejected by configure, while 4.1 and newer majors are
 # accepted.  This check runs the real assertion in a child CMake process so a
-# missing `message(FATAL_ERROR)` cannot silently turn the floor into a warning.
+# missing `message(FATAL_ERROR)` cannot silently turn the minimum into a warning.
 
 cmake_minimum_required(VERSION 3.21)
 
@@ -41,13 +41,13 @@ function(expect_assert version expected_result)
   endif()
 endfunction()
 
-# Below the floor.
+# Below the minimum.
 expect_assert("3.1" fail)
 expect_assert("4.0" fail)
 expect_assert("4.0.9" fail)
 expect_assert("" fail)
 expect_assert("unknown" fail)
-# At or above the floor, including the exact floor leg.
+# At or above the minimum, including the exact 4.1 leg.
 expect_assert("4.1" pass)
 expect_assert("4.1.0" pass)
 expect_assert("4.3" pass)

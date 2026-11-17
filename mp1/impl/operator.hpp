@@ -1305,7 +1305,7 @@ namespace mp1 {
     // with alignof(T) > alignof(std::max_align_t) is not supported on this path: MPI may place
     // callback temporaries in storage with only fundamental alignment.
     //
-    // reduce_scatter/reduce_scatter_block are the exception: MPICH 4.3.2 (the CI floor)
+    // reduce_scatter/reduce_scatter_block are the exception: MPICH 4.3.2 (the CI MPICH pin)
     // lays their user-op temporaries out at the image's true extent, so a T whose image has
     // unmapped bytes after the true extent is rejected there by
     // require_reduce_scatter_callback_image().
@@ -1412,7 +1412,7 @@ namespace mp1 {
     };
 
     // reduce_scatter and reduce_scatter_block are the two families where MPICH 4.3.2 (the CI
-    // floor) does not lay the callback temporaries out at the datatype extent when the
+    // MPICH pin) does not lay the callback temporaries out at the datatype extent when the
     // image has unmapped bytes after its true extent (a leading true lower bound or trailing
     // padding).  A managed callback image has extent sizeof(T) by contract, so a T whose native
     // map does not span the whole object would give the callback a corrupt view on that
@@ -1429,7 +1429,7 @@ namespace mp1 {
             ctx.operation,
             "mp1: managed reduce_scatter requires a callback image whose type map spans the "
             "whole T extent; native_datatype<T>() has a nonzero true lower bound or trailing "
-            "unmapped bytes, which the floor provider cannot lay out at the callback stride. "
+            "unmapped bytes, which MPICH 4.3.2 cannot lay out at the callback stride. "
             "Use a predefined operation, a raw MPI_Op, or a T whose listed fields span the "
             "object");
       }

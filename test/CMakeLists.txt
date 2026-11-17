@@ -10,7 +10,7 @@
 # `file_external_finalize` (external-finalize close/release fallbacks) are one
 # process-wide scenario at rank 1.  `test_spawn_contract` builds a second child
 # executable (CHILD_SOURCE), passes its path as the parent's first argument and
-# runs at ranks 1 and 2.  `test_version_contract` is a rank-1 scenario for the
+# runs at ranks 1, 2 and 4.  `test_version_contract` is a rank-1 scenario for the
 # generated version macros; it makes no MPI call.  Every other test uses the
 # shared unit main.
 #
@@ -124,7 +124,7 @@ endif()
 # Platform features that must be available for this configuration.  The list is
 # empty by default: requiring a runtime capability is an opt-in per job.  A
 # REQUIRES feature that is missing at configure time fails rather than skipping
-# (do not silently skip the floor harness); a runtime-only feature is exported
+# (do not silently skip the minimum-version check); a runtime-only feature is exported
 # as MP1_REQUIRE_<FEATURE>=1 for the declaring entries so a 77 becomes a
 # failure.
 set(MP1_TEST_REQUIRE_FEATURES "" CACHE STRING
@@ -571,7 +571,7 @@ if(MP1_TEST_MPI_EXPECTED_FAMILY)
     "MP1_TEST_MPI_EXPECTED_FAMILY=\"${MP1_TEST_MPI_EXPECTED_FAMILY}\"")
 endif()
 
-# Configure-time floor assertion self-check: 3.1/4.0 must fail, 4.1+ must pass.
+# Configure-time minimum-version assertion self-check: 3.1/4.0 must fail, 4.1+ must pass.
 add_test(NAME harness_mpi_version_selfcheck
   COMMAND ${CMAKE_COMMAND} -P "${PROJECT_SOURCE_DIR}/ci/check-mpi-version.cmake")
 set_tests_properties(harness_mpi_version_selfcheck PROPERTIES

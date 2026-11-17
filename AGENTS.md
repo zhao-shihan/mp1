@@ -245,8 +245,8 @@ not part of the default release count.
 
 ### 3.3 Provider matrix
 
-The release matrix is MPICH 4.3.2 (floor, tarball), Open MPI 6.0.0rc3
-(provisional, tarball) and Intel MPI 2021.19 (stable, Intel oneAPI apt). Use
+The release matrix is MPICH 4.3.2 (tarball), Open MPI 6.0.0rc3 (tarball) and
+Intel MPI 2021.19 (Intel oneAPI apt). Use
 the provider's `mpicxx`/`mpiexec` through `ci/mpi-env.sh`, which selects
 absolute paths; do not rely on a bare `mpicxx` from another provider. For a
 tarball provider, ensure `LD_LIBRARY_PATH` points at that prefix's `lib`
@@ -269,7 +269,7 @@ an environment issue, not a reason to change library code.
 ```sh
 ci/static-checks.sh
 ci/assert-cxx20.sh
-ci/assert-mpi.sh
+ci/assert-mpi.sh <family> <provider-version>
 ```
 
 Formatting is pinned to clang-format 21.1.8 and currently gates `mp1/**`:

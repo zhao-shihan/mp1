@@ -23,7 +23,7 @@ The C++20 toolchain requirement is a prerequisite of mp1, not the 1.0 migration
 subject; the source migration from mpl 0.5.0 is covered in
 [MIGRATION.md](MIGRATION.md). mpl 0.5.0 did not wrap one-sided communication;
 the RMA/window support below is new in mp1 and has no 0.5.0 counterpart. The
-configure step fails closed below these floors instead of producing thousands
+configure step fails closed below these minimums instead of producing thousands
 of diagnostics from an unsupported compiler.
 The error layer uses `std::source_location` and `std::format`; no user-facing
 function takes a `source_location` or a `what` parameter.
@@ -222,7 +222,7 @@ supported; a custom datatype using subarray, darray, F90, `PACKED` or
 `VALUE_INDEX`, or a type map that overlaps itself, is rejected with
 `std::invalid_argument` before the reduction. For `reduce_scatter` and
 `reduce_scatter_block` the image must have true lower bound 0 and true extent
-`sizeof(T)`: MPICH 4.3.2 (the CI floor) lays those callbacks out at the true
+`sizeof(T)`: MPICH 4.3.2 (the CI MPICH pin) lays those callbacks out at the true
 extent, so a `T` with a non-zero true lower bound or trailing unmapped bytes is
 rejected for those two families before MPI (the other reduction families accept
 it).
@@ -347,11 +347,10 @@ versions and configurations are recorded in the release evidence.
   variant or a predefined datatype, or use raw MPI.
 - **User-defined `MPI_Op` over a derived datatype.** Some providers can return
   a corrupted reduction result for this raw-MPI combination. The
-  `raw_mpi_op_keeps_native_datatype` case is skipped on Intel MPI 2021.19.0,
-  the configuration observed in CI; later Intel builds run it. It is a provider
-  limitation, not an mp1 contract; mp1 does not rewrite or pack the datatype to
-  work around it. Use a predefined datatype/operator, pack the elements
-  yourself, or use another provider/configuration.
+  `raw_mpi_op_keeps_native_datatype` case is skipped on Intel MPI (observed
+  with 2021.19). It is a provider limitation, not an mp1 contract; mp1 does not rewrite or pack
+  the datatype to work around it. Use a predefined datatype/operator, pack the
+  elements yourself, or use another provider/configuration.
 - **`MPI_ERR_PENDING` from a multiple completion.** MPI 4.1 §3.7.5 lets
   `MPI_Waitall` return `MPI_ERR_IN_STATUS` as soon as one slot fails and report
   `MPI_ERR_PENDING` for a slot that "has neither failed nor completed"; a
@@ -382,7 +381,7 @@ versions and configurations are recorded in the release evidence.
   expose the predefined attribute, the cache falls back to `tag_ub_min`
   (32767). A provider that reports a smaller nonconforming bound is trusted
   as reported, so tags above it are rejected locally; use raw MPI for a
-  provider that violates the floor.
+  provider that violates the minimum.
 - **`MPI_MAX_INFO_KEY`/`MPI_MAX_INFO_VAL` exact lengths.** MPI 4.1 §10 gives
   keys/values an implementation-defined maximum length, but the C binding
   stores them as null-terminated strings and implementations differ on whether
@@ -418,6 +417,11 @@ versions and configurations are recorded in the release evidence.
   self-respawn `test_file_spawn_contract` scenario exercises `MPI_Comm_spawn`
   on Intel with `shm:ofi`. Verify a two-executable spawn on this provider before
   relying on it.
+- **Open MPI 6+ self-respawn at four parent ranks.** The file-spawn success case
+  hangs in CI when four parent ranks re-spawn the test executable; it returns
+  early at four ranks on Open MPI 6+. Two-rank self-respawn still runs, and the
+  dedicated `test_spawn_contract.4` covers four-rank spawn with an external
+  child. This is an environment/provider limitation, not an mp1 contract.
 - **Intel MPI 2021.19 large subarray commit.** A subarray whose byte size
   exceeds 2 GiB (for example `sizes={INT_MAX,2}`, `subsizes={INT_MAX,1}`) makes
   Intel abort inside `MPI_Type_commit` (dataloop assertion). The layout test
