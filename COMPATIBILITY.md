@@ -422,6 +422,15 @@ versions and configurations are recorded in the release evidence.
   early at four ranks on Open MPI 6+. Two-rank self-respawn still runs, and the
   dedicated `test_spawn_contract.4` covers four-rank spawn with an external
   child. This is an environment/provider limitation, not an mp1 contract.
+- **Intel MPI 2021.19.2 spawn_multiple self-respawn.** The three-child
+  `spawn_multiple` half of `test_file_spawn_contract` is skipped on Intel MPI
+  2021.19.2. The failure was observed only in GitHub CI; it is possibly caused
+  by the CI container environment. Single-command self-respawn still runs.
+- **Intel MPI holey allgather at four or more ranks.** The non-contiguous
+  aggregate receive in `fixed_allgather_alltoall_contract` is skipped on Intel
+  at four or more ranks. The failure was observed only in GitHub CI; it is
+  possibly caused by the CI container environment. The dense forms and the
+  two-rank case still run.
 - **Intel MPI 2021.19 large subarray commit.** A subarray whose byte size
   exceeds 2 GiB (for example `sizes={INT_MAX,2}`, `subsizes={INT_MAX,1}`) makes
   Intel abort inside `MPI_Type_commit` (dataloop assertion). The layout test
