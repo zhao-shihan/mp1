@@ -30,7 +30,7 @@ function takes a `source_location` or a `what` parameter.
 
 The examples are built by default when mp1 is the top-level project. A
 consumer that only uses an installed package needs a C++20 compiler and
-`find_package(mp1 1.0 CONFIG REQUIRED)`; the imported target raises the
+`find_package(mp1 1.1 CONFIG REQUIRED)`; the imported target raises the
 consumer to C++20. Boost.Test is needed only for the in-tree test suite.
 
 ## Supported typed surface

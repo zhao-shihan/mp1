@@ -13,7 +13,17 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(mp1 1.0 CONFIG REQUIRED)
+# Read the checkout's single version source.  A release bump must not leave the
+# consumer requesting the previous minor version; the package installs with
+# SameMinorVersion compatibility, so the request must follow VERSION.
+if(NOT MP1_CONSUMER_VERSION)
+  file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../../VERSION" MP1_CONSUMER_VERSION LIMIT_COUNT 1)
+  string(STRIP "${MP1_CONSUMER_VERSION}" MP1_CONSUMER_VERSION)
+endif()
+if(NOT MP1_CONSUMER_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "consumer: invalid MP1_CONSUMER_VERSION '${MP1_CONSUMER_VERSION}'")
+endif()
+find_package(mp1 ${MP1_CONSUMER_VERSION} CONFIG REQUIRED)
 
 add_executable(consumer main.cc)
 target_link_libraries(consumer PRIVATE mp1::mp1)

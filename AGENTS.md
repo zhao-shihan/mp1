@@ -286,7 +286,7 @@ Install/consumer check:
 
 ```sh
 cmake --install build --prefix /tmp/mp1-install
-# configure a small consumer with find_package(mp1 1.0 CONFIG REQUIRED)
+# configure a small consumer with find_package(mp1 1.1 CONFIG REQUIRED)
 ```
 
 ## 4. C++ and API rules

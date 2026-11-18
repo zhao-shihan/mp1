@@ -1,4 +1,4 @@
-# Migrating from mpl 0.5.0 to mp1 1.0
+# Migrating from mpl 0.5.0 to mp1 1.1
 
 mp1 1.0.0 is a rename and a source-breaking rewrite of mpl 0.5.0.
 The mpl 0.5.0 package, header and namespace are replaced by `mp1`; its operation
@@ -24,7 +24,7 @@ mp1 is a C++20 library. The requirement is:
   libc++), or MSVC 19.32 (Visual Studio 2022 17.2) or newer. The error layer
   uses `std::source_location` and `std::format`; the position vocabulary uses
   concepts, `std::span` and designated initializers.
-- `find_package(mp1 1.0 CONFIG REQUIRED)` and
+- `find_package(mp1 1.1 CONFIG REQUIRED)` and
   `target_link_libraries(app PRIVATE mp1::mp1)`; the imported target raises the
   consumer to C++20.
 - CMake 3.21 or newer to configure or install mp1. The configure step fails
@@ -96,9 +96,9 @@ typed surface), so there is nothing to migrate:
 
 ## 3. Historical build and name map
 
-| Area | Before: mpl 0.5.0 | After: mp1 1.0 |
+| Area | Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|---|
-| CMake package | `find_package(mpl)` | `find_package(mp1 1.0 CONFIG REQUIRED)` |
+| CMake package | `find_package(mpl)` | `find_package(mp1 1.1 CONFIG REQUIRED)` |
 | CMake target | `mpl::mpl` | `mp1::mp1` |
 | Header | `#include <mpl/mpl.hpp>` | `#include <mp1/mp1.hpp>` |
 | Namespace | `mpl::` | `mp1::` |
@@ -114,7 +114,7 @@ into a build script.
 
 ## 4. Lifecycle, errors, status and vocabulary
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | No public `init`/`finalize`; a process-lifetime static environment initializes MPI on first use with `MPI_Init_thread(MPI_THREAD_MULTIPLE)` (unless the application initialized MPI itself) and finalizes at static destruction. | Explicit `mp1::init`/`mp1::finalize`, or one `mp1::environment`; no implicit finalize unless `mp1::finalize_at_exit()` is called. `init()` requests `MPI_THREAD_SINGLE` by default; use `init(mp1::threading_mode::multiple)` for threads. |
 | `mpl::environment::threading_mode()` returns the provided level. | `mp1::provided()` returns the provided level; `mp1::query_thread()` queries the current level. `mpl::threading_modes` becomes `mp1::threading_mode`. |
@@ -136,7 +136,7 @@ communicator first. Old sends come in scalar, pointer + layout and iterator
 (and, for some modes, container) forms. There are **no** old pointer + count
 data-movement calls, so do not translate a nonexistent `comm.send(p, n, ...)`.
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | `comm.send(data, dest, tag)` (value or container) | `mp1::send(c, data, dest, mp1::tag{tag})` |
 | `comm.send(ptr, layout, dest, tag)` | `mp1::send(c, mp1::region{ptr, layout}, dest, mp1::tag{tag})` |
@@ -156,7 +156,7 @@ data-movement calls, so do not translate a nonexistent `comm.send(p, n, ...)`.
 The old `mpl::tag_t` argument position is unchanged, but the value type is
 source-breaking: an `int`/`tag_t` no longer converts implicitly.
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | `mpl::tag_t{29}`, `mpl::tag_t(29)` | `mp1::tag{29}` |
 | `mpl::tag_t{}` (tag 0) | `mp1::tag{}` (tag 0) |
@@ -183,7 +183,7 @@ send, recv)`), not in MPI's trailing root position. Fixed collectives used
 value or pointer + layout forms; variable collectives used layout containers
 plus `mpl::displacements`, whose entries are **bytes**.
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | `comm.barrier()`, `comm.ibarrier()` | `mp1::barrier(c)`, `mp1::ibarrier(c)` |
 | `comm.bcast(root, data)` / `comm.ibcast(root, data)` | `mp1::bcast(c, root, data)` / `mp1::ibcast(c, root, data)` |
@@ -242,7 +242,7 @@ specializations remain the opt-in.
 
 ## 7. Layouts, datatypes and operators
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | `mpl::contiguous_layout<T>(n)` / `contiguous_layout<T>(n, block)` | `mp1::layout<T>::contiguous(n)` / `contiguous(n, block)` |
 | `mpl::vector_layout<T>(count)` / `mpl::vector_layout<T>(count, block)` | `mp1::layout<T>::contiguous(count)` / `contiguous(count, block)` (or `vector(count, 1, 1)`); old `vector_layout` is a contiguous repetition, not a strided vector |
@@ -301,7 +301,7 @@ there are no free `read_at`/`write_at` forwarders and no file view type. The
 migration is therefore a member-call signature change, not a free-function
 removal.
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | `file.set_view<T>(datarep, displacement, info)` (no layout; etype = filetype = `T`) | `file.set_view(displacement, mp1::layout<T>::contiguous(1), datarep, info)`; use the non-template `file.set_view(displacement, datarep, info)` only when the old `T` was `std::byte` (it sets `MPI_BYTE` etype/filetype) |
 | `file.set_view<T>(datarep, layout, displacement, info)` | `file.set_view(displacement, layout, datarep, info)`; displacement is bytes, as before |
@@ -328,7 +328,7 @@ outside 1.0.
 
 ## 9. Communicators, groups, spawn and topology
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | Copying a `communicator` duplicates it; the copy constructor is the normal way to create a new context. | `communicator` is a move-only owner; call `mp1::communicator::dup(c)` or `dup_with_info(c, i)`. Passing a communicator by reference does not duplicate it. |
 | `comm.info(i)` / `comm.info()` | `c.set_info(i)` / `c.get_info()` |
@@ -351,7 +351,7 @@ outside 1.0.
 
 ## 10. Requests
 
-| Before: mpl 0.5.0 | After: mp1 1.0 |
+| Before: mpl 0.5.0 | After: mp1 1.1 |
 |---|---|
 | `irequest` (nonblocking) and `prequest` (persistent) are separate classes; `prequest` has `start()`. | One `mp1::request` covers nonblocking and persistent operations; `start()` starts a persistent request and `state()`/`kind()` expose the state machine. |
 | `irequest_pool`/`prequest_pool` with `push`, indexed `wait`/`test`, `waitany`/`testany`/`waitsome`/`testsome`/`waitall`/`testall`, and pool-held status arrays. | Put requests in `std::vector<mp1::request>` and pass `std::span<mp1::request>` to `mp1::wait_all`, `test_all`, `wait_any`, `test_any`, `wait_some`, `test_some`, `get_status_all`, `get_status_any`, `get_status_some` and `start_all`. |
@@ -422,7 +422,7 @@ mp1; if a name is not in those tables, it was not part of the old library.
 
 ## 14. Mechanical migration order
 
-1. **Build files first.** Require a C++20 compiler, `find_package(mp1 1.0
+1. **Build files first.** Require a C++20 compiler, `find_package(mp1 1.1
    CONFIG REQUIRED)` and `mp1::mp1`. Include `<mp1/mp1.hpp>` and replace the
    old macro prefix with `MP1_`. Remove the old package names from
    `CMAKE_PREFIX_PATH` and from any exported install rules; there is no

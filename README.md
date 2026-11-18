@@ -104,7 +104,7 @@ top-level project. Set `-DMP1_BUILD_EXAMPLES=OFF` to skip the examples, and
 Downstream CMake:
 
 ```cmake
-find_package(mp1 1.0 CONFIG REQUIRED)
+find_package(mp1 1.1 CONFIG REQUIRED)
 
 add_executable(app main.cc)
 target_link_libraries(app PRIVATE mp1::mp1)
