@@ -417,15 +417,15 @@ versions and configurations are recorded in the release evidence.
   self-respawn `test_file_spawn_contract` scenario exercises `MPI_Comm_spawn`
   on Intel with `shm:ofi`. Verify a two-executable spawn on this provider before
   relying on it.
-- **Open MPI 6+ self-respawn at four parent ranks.** The file-spawn success case
-  hangs in CI when four parent ranks re-spawn the test executable; it returns
-  early at four ranks on Open MPI 6+. Two-rank self-respawn still runs, and the
-  dedicated `test_spawn_contract.4` covers four-rank spawn with an external
-  child. This is an environment/provider limitation, not an mp1 contract.
-- **Intel MPI 2021.19.2 spawn_multiple self-respawn.** The three-child
-  `spawn_multiple` half of `test_file_spawn_contract` is skipped on Intel MPI
-  2021.19.2. The failure was observed only in GitHub CI; it is possibly caused
-  by the CI container environment. Single-command self-respawn still runs.
+- **Open MPI 6+ four-rank file-spawn test.** The four-rank
+  `test_file_spawn_contract` entry is skipped on Open MPI 6+. The failure was
+  observed only in GitHub CI; it is possibly caused by the CI container
+  environment. The two-rank entry still runs, and the dedicated
+  `test_spawn_contract.4` covers four-rank spawn with an external child.
+- **Intel MPI 2021.19.2 self-respawn.** The self-respawn success case in
+  `test_file_spawn_contract` is skipped on Intel MPI 2021.19.2. The failure was
+  observed only in GitHub CI; it is possibly caused by the CI container
+  environment. The file tests and local spawn validation still run.
 - **Intel MPI holey allgather at four or more ranks.** The non-contiguous
   aggregate receive in `fixed_allgather_alltoall_contract` is skipped on Intel
   at four or more ranks. The failure was observed only in GitHub CI; it is

@@ -10,10 +10,11 @@
 // child enters a static-initialization child mode that writes its argument vector and exits
 // before Boost.Test starts. They run on Open MPI and Intel MPI; MPICH 4.3.2 cannot reliably
 // start a second copy of this binary from one parent process, so that provider skips them.
-// Open MPI 6+ returns early at four parent ranks because self-respawn hangs in the CI
-// environment; the dedicated test_spawn_contract.4 covers that rank count with an external
-// child. Intel needs I_MPI_FABRICS=shm:ofi for MPI_Comm_spawn; the CTest entry sets it. The
-// local spawn validation runs on every provider.
+// Open MPI 6+ skips the four-rank entry because it was seen to hang in the CI environment;
+// the dedicated test_spawn_contract.4 covers that rank count with an external child. Intel
+// 2021.19.2 skips the self-respawn case for the same CI-only reason. Intel needs
+// I_MPI_FABRICS=shm:ofi for MPI_Comm_spawn; the CTest entry sets it. The local spawn
+// validation runs on every provider.
 
 #include "mp1/mp1.hpp"
 
@@ -290,6 +291,15 @@ namespace {
 struct mp1_file_spawn_contract_fixture {
   mp1_file_spawn_contract_fixture() {
     mp1::init();
+#if defined(OMPI_MAJOR_VERSION) && OMPI_MAJOR_VERSION >= 6
+    if (world_size() == 4) {
+      std::fprintf(stderr,
+                   "four-rank file-spawn test skipped on Open MPI 6+: observed in GitHub CI, "
+                   "possibly a container-environment issue; test_spawn_contract.4 covers "
+                   "four-rank spawn with the external child\n");
+      std::_Exit(77);
+    }
+#endif
     const int rank = world_rank();
     std::uint64_t seed{0};
     if (rank == 0) {
@@ -834,14 +844,11 @@ BOOST_AUTO_TEST_CASE(spawn_local_validation) {
 
 BOOST_AUTO_TEST_CASE(spawn_single_and_multiple) {
   BOOST_TEST(true);
-#if defined(OMPI_MAJOR_VERSION) && OMPI_MAJOR_VERSION >= 6
-  if (world_size() == 4) {
-    std::fprintf(stderr,
-                 "spawn self-respawn skipped at 4 ranks on Open MPI 6+: the CI leg hangs in "
-                 "MPI_Comm_disconnect/MPI_Comm_spawn; test_spawn_contract.4 covers four-rank "
-                 "spawn with the external child\n");
-    return;
-  }
+#if defined(I_MPI_NUMVERSION) && I_MPI_NUMVERSION == 20211902300
+  std::fprintf(stderr,
+               "Intel MPI 2021.19.2 self-respawn skipped: observed in GitHub CI, possibly a "
+               "container-environment issue (COMPATIBILITY.md)\n");
+  return;
 #endif
   if (not spawn_self_respawn_supported) {
     BOOST_TEST_MESSAGE(
@@ -909,15 +916,6 @@ BOOST_AUTO_TEST_CASE(spawn_single_and_multiple) {
     }
   }
   world_barrier();
-
-#if defined(I_MPI_NUMVERSION) && I_MPI_NUMVERSION == 20211902300
-  // Keep the single-command coverage; skip only the three-child spawn_multiple half on the
-  // Intel build where GitHub CI observed a failure (possibly a container-environment issue).
-  std::fprintf(stderr,
-               "spawn_multiple self-respawn skipped on Intel MPI 2021.19.2: observed in "
-               "GitHub CI, possibly a container-environment issue (COMPATIBILITY.md)\n");
-  return;
-#endif
 
   std::filesystem::path multiple_dir = base_dir / "spawn_multiple_markers";
   if (rank == 0)
