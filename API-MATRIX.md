@@ -1,7 +1,7 @@
-# mp1 1.0.0 API matrix
+# mp1 1.1.0 API matrix
 
 mp1 is a header-only C++20 typed wrapper for the MPI 4.1 World Model. This page
-maps the public typed surface of mp1 1.0.0: which operation families exist,
+maps the public typed surface of mp1 1.1.0: which operation families exist,
 which C++ data spellings each family accepts, which lifetimes are covered, and
 where the typed surface stops. It is a coverage map, not a signature reference:
 exact declarations, parameter order, defaults and constraints are in the

@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.1.0 — 2026-11-18
+
+Version 1.1.0 adds transparent reduction-functor spellings and aligns the
+typed reduction and RMA operator mapping with the C++ datatype categories of
+MPI 4.1 §6.9.2. The 1.0 public entry points are retained; callers that used
+datatype categories outside the C++ typed surface (Fortran or multi-language
+categories) now get the documented fail-closed rejection instead of a callback
+mapping.
+
+### Added
+
+- `mp1::max<>`, `mp1::min<>` and `mp1::logical_xor<>` transparent spellings:
+  the element type defaults to `void` and is deduced from the reduction
+  element type, like the standard transparent functors.
+- Transparent `mp1::op_traits` queries forward to the typed truth table from
+  the reduction element type; a type-only transparent query remains `false`
+  because it has no operand.
+
+### Changed
+
+- Typed collective reductions and RMA atomic operations use the MPI 4.1
+  §6.9.2 C++ datatype rows directly: floating `max`/`min`, complex
+  `plus`/`multiplies`, and C-integer logical operations map to predefined MPI
+  operations; the same table validates raw RMA handles.
+- An explicit `MP1_DATATYPE_TRAITS` on an enum is classified from its runtime
+  handle; `fetch_and_op` and `compare_and_swap` are restricted to the C
+  integer, Logical and Byte categories.
+- The CI provider matrix is MPICH 4.3.2, Open MPI 6.0.0rc3 and Intel MPI
+  2021.19. The documented CI-only skips cover the Intel holey allgather at
+  four or more ranks, the Intel 2021.19.2 self-respawn, and the Open MPI 6+
+  four-rank file-spawn entry; these are recorded as possible CI container
+  environment limitations.
+
 ## 1.0.0 — 2026-11-16
 
 Version 1.0.0 is the first stable release of mp1, the renamed and rewritten
