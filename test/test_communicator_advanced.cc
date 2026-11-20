@@ -264,7 +264,6 @@ BOOST_AUTO_TEST_CASE(intercomm_from_groups_four_ranks) {
 BOOST_AUTO_TEST_CASE(intercomm_from_groups_empty_groups) {
   require_world();
   const auto world = mp1::comm_world();
-  auto world_group = mp1::get_group(world);
 
   // Empty local group: local operation returning an invalid owner; the remote arguments are
   // not validated (they are significant only at the leader).
@@ -272,8 +271,16 @@ BOOST_AUTO_TEST_CASE(intercomm_from_groups_empty_groups) {
       mp1::group::empty(), 0, mp1::group{}, 0, "", mp1::info{}, mp1::error_handler::returns);
   BOOST_TEST(not empty_local.is_valid());
 
-  // Empty remote group at every local leader (one rank per group at 2 ranks): MPI returns
-  // MPI_COMM_NULL.
+  // MPI 4.1 §7.6.2: an empty remote group at the leader is a local operation returning
+  // MPI_COMM_NULL.  Open MPI 6.0.0rc3 rejects it with MPI_ERR_ARG (see COMPATIBILITY.md), so
+  // run this standard form on conforming providers and document the skip on Open MPI 6.
+#if defined(OMPI_MAJOR_VERSION) && OMPI_MAJOR_VERSION >= 6
+  if (world.size() == 2) {
+    BOOST_TEST_MESSAGE(
+        "empty remote group skipped on Open MPI 6: MPI_ERR_ARG, see COMPATIBILITY.md");
+  }
+#else
+  auto world_group = mp1::get_group(world);
   if (world.size() == 2) {
     auto self_group = mp1::group_incl(world_group, std::array{world.rank()});
     const mp1::communicator empty_remote = mp1::communicator::intercomm_create_from_groups(
@@ -281,6 +288,7 @@ BOOST_AUTO_TEST_CASE(intercomm_from_groups_empty_groups) {
         mp1::error_handler::returns);
     BOOST_TEST(not empty_remote.is_valid());
   }
+#endif
 }
 
 BOOST_AUTO_TEST_CASE(intercomm_from_groups_validation) {

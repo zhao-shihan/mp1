@@ -379,7 +379,9 @@ Contract details:
 
 - An empty `group`/`local_group` is a local operation returning an invalid
   owner without a communicator-creation call. An empty remote group at the
-  leader is passed to MPI, which returns `MPI_COMM_NULL`.
+  leader is an MPI 4.1 local operation; provider support varies (Open MPI
+  6.0.0rc3 rejects it; see [COMPATIBILITY.md](COMPATIBILITY.md)), so portable
+  code should not rely on that edge.
 - Non-membership of either from-group call is an MPI-erroneous precondition
   that mp1 deliberately does not diagnose locally; MPI is the authority.
 - `local_group` and `remote_group` must be disjoint (MPI obligation). Within

@@ -488,6 +488,14 @@ versions and configurations are recorded in the release evidence.
   an invalid `remote_leader` at non-leaders. mp1 follows the standard and keeps
   the leader-only validation; portable code passes the same valid remote group
   and a valid remote leader on every local rank.
+- **Open MPI 6.0.0rc3 empty remote group in
+  `MPI_Intercomm_create_from_groups`.** MPI 4.1 §7.6.2 says that if
+  `MPI_GROUP_EMPTY` is supplied as the local or remote group, the call is a
+  local operation and returns `MPI_COMM_NULL`. Open MPI 6.0.0rc3 returns
+  `MPI_ERR_ARG` when the leader's `remote_group` is empty. mp1 passes the empty
+  remote group to MPI rather than adding a nonstandard short-circuit
+  (non-leaders cannot know the leader's remote group); portable code should not
+  rely on this edge on that provider.
 - **Large-count routines.** mp1 consistently uses the MPI 4.1 `_c` large-count
   entry points; a provider that advertises MPI 4.1 but has an incomplete `_c`
   implementation is not supported.
