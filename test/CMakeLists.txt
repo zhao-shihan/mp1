@@ -467,10 +467,10 @@ set(MP1_COMPILE_FAIL_PROBES
   "layout_empty_removed@test/compile_fail/layout_empty_removed.cc@(empty.*is not a member of.*mp1::layout|no member named .empty. in .*mp1::layout)@test/compile_pass/layout_zero_control.cc"
   "throwing_reduction_functor@test/compile_fail/throwing_reduction_functor.cc@mp1: a reduction functor used on the callback path must be nothrow-invocable@test/compile_pass/reduction_functor_noexcept.cc"
   "take_communicator_const@test/compile_fail/take_communicator_const.cc@(binding reference of type|no matching function).*take_communicator|discards qualifiers@test/compile_pass/communicator_advanced_forms.cc"
-  "create_from_group_stringtag_wrong_type@test/compile_fail/create_from_group_stringtag_wrong_type.cc@(cannot convert|no matching function).*string_view|no matching function for call to .*create_from_group@test/compile_pass/communicator_advanced_forms.cc"
-  "create_from_group_null_errhandler@test/compile_fail/create_from_group_null_errhandler.cc@(cannot convert|no matching function).*(MPI_Errhandler|create_from_group)@test/compile_pass/communicator_advanced_forms.cc"
+  "create_from_group_stringtag_wrong_type@test/compile_fail/create_from_group_stringtag_wrong_type.cc@(cannot convert|no matching function|no viable conversion).*string_view|no matching function for call to .*create_from_group@test/compile_pass/communicator_advanced_forms.cc"
+  "create_from_group_null_errhandler@test/compile_fail/create_from_group_null_errhandler.cc@(cannot convert|no matching function|cannot initialize).*(MPI_Errhandler|create_from_group)@test/compile_pass/communicator_advanced_forms.cc"
   "group_incl_braced_init@test/compile_fail/group_incl_braced_init.cc@(could not convert|no matching function).*group_incl@test/compile_pass/group_span_forms.cc"
-  "group_range_wrong_element@test/compile_fail/group_range_wrong_element.cc@(could not convert|no matching function).*group_range_incl@test/compile_pass/group_span_forms.cc"
+  "group_range_wrong_element@test/compile_fail/group_range_wrong_element.cc@(could not convert|no matching function).*group_range_incl|no viable conversion.*rank_range@test/compile_pass/group_span_forms.cc"
   "free_idup_removed@test/compile_fail/free_idup_removed.cc@(is not a member of|no member named).*(mp1|idup)@test/compile_pass/communicator_advanced_forms.cc")
 foreach(probe IN LISTS MP1_COMPILE_FAIL_PROBES)
   string(REPLACE "@" ";" fields "${probe}")
