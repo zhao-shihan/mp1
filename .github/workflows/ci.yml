@@ -108,7 +108,6 @@ jobs:
             -DMPIEXEC_EXECUTABLE="$MPIEXEC_EXECUTABLE" \
             -DMPIEXEC_PREFLAGS="${{ matrix.mpiexec_preflags }}" \
             -DCMAKE_CXX_FLAGS="${{ matrix.cxx_flags }}" \
-            -DMP1_TEST_EXTRA_RANKS=${{ matrix.extra_ranks }} \
             -DMP1_TEST_REQUIRE_FEATURES="${{ join(matrix.require_features, ';') }}" \
             -DBUILD_TESTING=ON \
             -DMP1_BUILD_PERF=ON \

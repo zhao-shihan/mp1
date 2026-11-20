@@ -6,12 +6,11 @@ defines the two registration helpers (`mp1_add_test`, `mp1_add_compile_fail`).
 
 ## Suite inventory
 
-The default (non-nightly) release configuration measures:
+The default local configuration measures:
 
 | Item | Count |
 |---|---:|
-| CTest entries (default) | **303** |
-| CTest entries with `MP1_TEST_EXTRA_RANKS=ON` | **304** |
+| CTest entries (default) | **304** |
 | compile-fail CTest entries | **102** (100 contract probes + 2 harness self-checks) |
 | contract compile-fail probes (`test/compile_fail/*.cc`) | **100** |
 | compile-pass controls (`test/compile_pass/*.cc`) | **66** |
@@ -22,29 +21,30 @@ The default (non-nightly) release configuration measures:
 | Ninja build edges (tests + examples + perf) | **425** |
 | wrapped MPI symbols (`harness_wrap_coverage`) | **177** (34 implementation files) |
 
-`MP1_TEST_EXTRA_RANKS=ON` adds one nightly 5-rank entry (the asymmetric 3+2
-intercommunicator run of the persistent-collective unit), for 304 entries; it
-is off in the default count. The release build enables `MP1_BUILD_PERF`, so the
-deterministic `perf_calls` gate is one of the 303 default entries; the nightly
-timing-ratio `perf_ratios` entry needs the separate `MP1_BUILD_PERF_RATIOS`
-opt-in and is excluded by `-LE nightly`. Header self-containment and
-compile-all are build gates; the 66 compile-pass controls are compiled by the
-`harness_compile_pass_controls` CTest entry, and the two compile-fail harness
-self-checks are the extra entries included in the 102.
+The suite includes a 5-rank entry for the asymmetric 3+2 intercommunicator run
+of the persistent-collective unit, in addition to its 2/4-rank entries. The
+release build enables `MP1_BUILD_PERF`, so the deterministic `perf_calls` gate
+is one of the 304 default entries; the nightly timing-ratio `perf_ratios`
+entry needs the separate `MP1_BUILD_PERF_RATIOS` opt-in and is excluded by
+`-LE nightly`. Header self-containment and compile-all are build gates; the 66
+compile-pass controls are compiled by the `harness_compile_pass_controls`
+CTest entry, and the two compile-fail harness self-checks are the extra
+entries included in the 102.
 
 ## CTest jobs vs MPI ranks
 
 Two independent numbers control a test run:
 
 - **MPI ranks** — each MPI test is registered at fixed rank counts (2 and 4
-  for the unit tests). Those counts are protocol coverage, not a measurement
+  for most unit tests; the persistent-collective unit also has a 5-rank
+  entry). Those counts are protocol coverage, not a measurement
   of how many CPUs the host has; they do not change with the machine size.
 - **CTest jobs** — `ctest -j N` (or `CTEST_PARALLEL_LEVEL`) limits how many
   CTest entries execute concurrently. `mp1_add_test` sets the `PROCESSORS`
   test property to the entry's rank count, so CTest treats a rank-4 entry as
   consuming four of the `N` slots and does not co-schedule another entry with
-  it. If the budget is below an entry's rank count (for example the nightly
-  rank-5 entry at `-j4`), CTest still runs the entry rather than skipping it,
+  it. If the budget is below an entry's rank count (for example the 5-rank
+  entry at `-j4`), CTest still runs the entry rather than skipping it,
   so it can oversubscribe a smaller host.
 
 Do not pass the CTest job count to `mpiexec`; the rank count of each entry is

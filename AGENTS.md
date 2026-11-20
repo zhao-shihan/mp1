@@ -166,8 +166,8 @@ design.
 
 A release is a gate, not a commit message.
 
-- Run the full release checks: MPICH, Open MPI and Intel MPI builds, default
-  and extra-ranks CTest, compile-fail, compile-pass controls, examples,
+- Run the full release checks: MPICH, Open MPI and Intel MPI builds, full CTest
+  including the 5-rank entry, compile-fail, compile-pass controls, examples,
   ASan/UBSan targeted, static checks, formatting, install/consumer.
 - Do not tag, push, rewrite `main`, or amend a release commit unless the
   maintainer explicitly asks for that exact operation.
@@ -235,22 +235,10 @@ ci/run-ctest.sh --test-dir tmp/build -LE nightly --output-on-failure
 MP1_TEST_JOBS=2 ci/run-ctest.sh --test-dir tmp/build --output-on-failure
 ```
 
-### 3.2 Extra ranks / release-like suite
-
-```sh
-cmake -S . -B tmp/build-extra -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DBUILD_TESTING=ON \
-  -DMP1_TEST_EXTRA_RANKS=ON \
-  -DMP1_BUILD_PERF=ON
-cmake --build tmp/build-extra --parallel
-ci/run-ctest.sh --test-dir tmp/build-extra -LE nightly --output-on-failure
-```
-
 `MP1_BUILD_PERF_RATIOS` is a separate opt-in for timing-ratio entries; it is
 not part of the default release count.
 
-### 3.3 Provider matrix
+### 3.2 Provider matrix
 
 The release matrix is MPICH 4.3.2 (tarball), Open MPI 6.0.0rc3 (tarball) and
 Intel MPI 2021.19 (Intel oneAPI apt). Use
@@ -271,7 +259,7 @@ Open MPI ASan runs on some hosts need the documented MCA workaround
 (`OMPI_MCA_pml=ob1`, `OMPI_MCA_btl=self,tcp`, or the patcher override); this is
 an environment issue, not a reason to change library code.
 
-### 3.4 Gates
+### 3.3 Gates
 
 ```sh
 ci/static-checks.sh
@@ -384,8 +372,7 @@ cmake --install tmp/build --prefix tmp/install
 Before declaring a release candidate:
 
 - [ ] `VERSION` and generated version agree; no hardcoded version in code.
-- [ ] default CTest on MPICH, Open MPI and Intel MPI is green;
-- [ ] extra-ranks CTest is green;
+- [ ] default CTest on MPICH, Open MPI and Intel MPI (2/4/5 ranks) is green;
 - [ ] compile-fail, compile-pass controls, compile-all, examples, wrap coverage;
 - [ ] ASan/UBSan targeted, no diagnostics;
 - [ ] `ci/static-checks.sh`, formatting, links/anchors, C++20/MPI assertions;

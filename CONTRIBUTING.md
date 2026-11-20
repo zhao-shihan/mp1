@@ -37,8 +37,9 @@ it measures timing ratios. See `test/README.md` for details.
 Use an MPI 4.1 implementation and a C++20 compiler (GCC 13+, Clang 16+ with
 libstdc++ 13+ or a conforming libc++, or MSVC 19.32+). The pull-request matrix
 builds MPICH 4.3.2 Debug, Open MPI 6.0.0rc3 Debug, Intel MPI 2021.19 Debug and
-a Clang build/test leg; the nightly matrix adds extra ranks, the performance
-suite and report-only clang-tidy.
+a Clang build/test leg. The pull-request matrix runs the full suite, including
+the 5-rank persistent-collective entry; nightly adds the performance suite and
+report-only clang-tidy.
 
 ## Version
 

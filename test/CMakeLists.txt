@@ -26,9 +26,8 @@
 # returns 77 (CTest skip) in that case.  Only that entry declares the `shared`
 # requirement, and a job that opts into `MP1_TEST_REQUIRE_FEATURES=shared`
 # exports `MP1_REQUIRE_SHARED=1` for it so the skip becomes a failure.  The
-# nightly `MP1_TEST_EXTRA_RANKS=ON` configuration additionally registers a
-# 5-rank run of test_communicator_persistent_collective (asymmetric 3+2
-# intercommunicator).
+# suite always registers a 5-rank run of test_communicator_persistent_collective
+# (asymmetric 3+2 intercommunicator).
 
 if(POLICY CMP0167)
   # The FindBoost module is removed. Boost 1.70.0 and later provide a
@@ -38,11 +37,6 @@ else()
   # Use build-in FindBoost module.
   find_package(Boost COMPONENTS unit_test_framework REQUIRED)
 endif()
-
-# Extra rank counts for long-running configurations (nightly).  The default
-# suite keeps the fixed 2/4-rank unit entries.
-option(MP1_TEST_EXTRA_RANKS
-  "Register extra rank counts for the nightly test configuration" OFF)
 
 include(${PROJECT_SOURCE_DIR}/cmake/MP1Test.cmake)
 
@@ -333,10 +327,10 @@ set_tests_properties(version_matches_project PROPERTIES
   TIMEOUT 60
   LABELS "version;static")
 
-# Persistent collectives: the nightly extra-ranks configuration adds a 5-rank run of the
-# intra/inter unit so the intercommunicator half is exercised with an asymmetric
-# 3+2 split.  The default configuration keeps the 2/4-rank entries above.
-if(MP1_TEST_EXTRA_RANKS AND TARGET mp1_test_communicator_persistent_collective)
+# Persistent collectives: always include a 5-rank run of the intra/inter unit so
+# the intercommunicator half is exercised with an asymmetric 3+2 split, in
+# addition to the 2/4-rank entries above.
+if(TARGET mp1_test_communicator_persistent_collective)
   add_test(NAME "test_communicator_persistent_collective.5"
     COMMAND
       ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 5

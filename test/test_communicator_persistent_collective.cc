@@ -3,9 +3,9 @@
 // layouts, and repeated start/wait cycles (the request payload must be re-packed and
 // re-primed on every start).
 //
-// The unit is registered at 2 and 4 ranks by the glob in test/CMakeLists.txt; the nightly
-// extra-ranks configuration additionally runs it at 5 ranks so the intercommunicator half is
-// exercised with an asymmetric 3+2 split.
+// The unit is registered at 2 and 4 ranks by the glob in test/CMakeLists.txt; the suite
+// also runs it at 5 ranks so the intercommunicator half is exercised with an asymmetric
+// 3+2 split.
 
 #include "mp1/mp1.hpp"
 

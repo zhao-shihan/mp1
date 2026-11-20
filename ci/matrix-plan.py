@@ -171,7 +171,6 @@ def matrix_rows(data: dict, profile: str) -> list:
             ),
             "compile_fail": bool(entry.get("compile_fail", False)),
             "example_smoke": bool(entry.get("example_smoke", False)),
-            "extra_ranks": bool(entry.get("extra_ranks", False)),
             "require_features": entry.get("require_features", []),
         }
         rows.append(row)
@@ -186,8 +185,6 @@ def print_text(data: dict, profile: str, rows: list) -> None:
             checks.append("compile-fail")
         if row["example_smoke"]:
             checks.append("examples")
-        if row["extra_ranks"]:
-            checks.append("extra-ranks")
         flags = " ".join(checks) if checks else "-"
         print(
             f"  {row['name']:<38} {row['mpi']:<8} {row['mpi_version']:<10} "

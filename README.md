@@ -1655,11 +1655,10 @@ the NOLINT rules, and the local commands that match CI. The release checks are:
 - configure and build **425** build edges, which compile **285** C++20
   translation units; the release build enables `MP1_BUILD_PERF`, so the
   deterministic `perf_calls` gate is one of the CTest entries;
-- `ci/run-ctest.sh --test-dir build -LE nightly`: **303/303** non-nightly
-  entries in the default configuration, or **304/304** with
-  `MP1_TEST_EXTRA_RANKS=ON` (one extra 5-rank persistent-collective entry);
-  **102** of them are compile-fail entries (**100** probes + 2 harness
-  self-checks);
+- `ci/run-ctest.sh --test-dir build -LE nightly`: **304/304** non-nightly
+  entries in the default configuration (including the 5-rank
+  persistent-collective entry); **102** of them are compile-fail entries
+  (**100** probes + 2 harness self-checks);
 - **100** compile-fail probes, **66** compile-pass controls and **9**
   compile-all API sources, all built by the same configure;
 - **93** unit-test sources carrying **533** Boost test cases;
