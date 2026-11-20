@@ -173,8 +173,9 @@ A release is a gate, not a commit message.
   maintainer explicitly asks for that exact operation.
 - Do not hide a provider workaround in the library to make a gate green; put it
   in the documented environment instructions.
-- Leave the working tree clean; keep ad-hoc probes/builds under ignored paths or
-  outside the repository.
+- Leave the working tree clean; keep ad-hoc probes, throwaway build trees,
+  logs and other scratch material under `tmp/` in the workspace (never on the
+  repository surface or beside product sources).
 - Historical releases/tags are retained/removed only by explicit owner
   decision.
 
@@ -198,23 +199,29 @@ MIGRATION.md             mpl 0.5.0 -> mp1
 CHANGELOG.md             release history (first heading matches VERSION)
 CONTRIBUTING.md          toolchain and contribution rules
 VERSION                  sole version source
+tmp/                     agent scratch, git-ignored (not product source)
 ```
 
-`agent-workspace/` contains working material from maintainer/agent sessions; it
-is not part of the library and must not be committed as product source.
+**Agent scratch policy.** All agent-created working material belongs under
+`tmp/` in the workspace: throwaway build trees, probes, logs, generated files,
+design notes and other temporary artifacts. `tmp/` is git-ignored; it is not
+part of the library. Do not create new files or directories at the repository
+root or beside product sources/tests. Do not put scratch output in a top-level
+`build*/` directory either: if a tool defaults to one, pass the `tmp/...` path
+explicitly (for example `tmp/build`).
 
 ## 3. Build and test
 
 ### 3.1 Normal development build
 
 ```sh
-cmake -S . -B build -G Ninja \
+cmake -S . -B tmp/build -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_TESTING=ON \
   -DMP1_BUILD_EXAMPLES=ON \
   -DMP1_BUILD_PERF=ON
-cmake --build build --parallel
-ci/run-ctest.sh --test-dir build --output-on-failure
+cmake --build tmp/build --parallel
+ci/run-ctest.sh --test-dir tmp/build --output-on-failure
 ```
 
 `ci/run-ctest.sh` uses `MP1_TEST_JOBS` (configure-time cache or environment);
@@ -223,21 +230,21 @@ the rank coverage inside each test is fixed and independent of `ctest -j`.
 Useful focused runs:
 
 ```sh
-ci/run-ctest.sh --test-dir build -R '^test_file' --output-on-failure
-ci/run-ctest.sh --test-dir build -LE nightly --output-on-failure
-MP1_TEST_JOBS=2 ci/run-ctest.sh --test-dir build --output-on-failure
+ci/run-ctest.sh --test-dir tmp/build -R '^test_file' --output-on-failure
+ci/run-ctest.sh --test-dir tmp/build -LE nightly --output-on-failure
+MP1_TEST_JOBS=2 ci/run-ctest.sh --test-dir tmp/build --output-on-failure
 ```
 
 ### 3.2 Extra ranks / release-like suite
 
 ```sh
-cmake -S . -B build-extra -G Ninja \
+cmake -S . -B tmp/build-extra -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_TESTING=ON \
   -DMP1_TEST_EXTRA_RANKS=ON \
   -DMP1_BUILD_PERF=ON
-cmake --build build-extra --parallel
-ci/run-ctest.sh --test-dir build-extra -LE nightly --output-on-failure
+cmake --build tmp/build-extra --parallel
+ci/run-ctest.sh --test-dir tmp/build-extra -LE nightly --output-on-failure
 ```
 
 `MP1_BUILD_PERF_RATIOS` is a separate opt-in for timing-ratio entries; it is
@@ -285,7 +292,7 @@ unrelated files.
 Install/consumer check:
 
 ```sh
-cmake --install build --prefix /tmp/mp1-install
+cmake --install tmp/build --prefix tmp/install
 # configure a small consumer with find_package(mp1 2.0 CONFIG REQUIRED)
 ```
 
@@ -385,7 +392,8 @@ Before declaring a release candidate:
 - [ ] install manifest and out-of-tree consumer `mp1 <VERSION>`;
 - [ ] docs/API census/counts match the build;
 - [ ] no old-fork-name / late-0.2x / internal references; mpl 0.5.0 facts correct;
-- [ ] working tree clean; no accidental build artifacts;
+- [ ] all agent scratch/build trees under `tmp/`; working tree clean; no
+      build artifacts on the repository surface;
 - [ ] tag/push/history rewrite explicitly authorized by the maintainer.
 
 ## 9. Agent workflow
@@ -398,8 +406,10 @@ Before declaring a release candidate:
 4. Add/adjust tests, compile probes, and docs in the same change.
 5. Run focused tests first, then the full gate when the change is release-facing.
 6. Report exact commands/results and any environment workaround.
-7. Do not commit `agent-workspace/`, build directories, or generated
-   `mp1/version.hpp`.
+7. Keep all agent-created scratch material (build trees, probes, logs, notes,
+   generated files) under `tmp/`; never create files or directories at the
+   repository root or beside product sources. Do not commit `tmp/`, build
+   directories, or generated `mp1/version.hpp`.
 8. Do not tag, push, rewrite `main`, or amend the release commit without an
    explicit instruction.
 9. If a request conflicts with the eight philosophy points, stop and ask.
