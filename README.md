@@ -355,10 +355,14 @@ r.wait();
 mp1::communicator duplicate = mp1::take_communicator(r);
 ```
 
-Both from-group factories take MPI's argument order and require **both** the
-`info` and the `mp1::error_handler`; there are no defaults. `mp1::info{}` is
-the valid no-hints spelling (it passes `MPI_INFO_NULL`, which MPI accepts).
-Under MPI 4.1 §9.3.1 the handler must be a predefined handler or one created by
+Both from-group factories take MPI's argument order. `info` defaults to
+`mp1::info{}` (which passes `MPI_INFO_NULL`, accepted by MPI) and the handler
+defaults to `mp1::error_handler::are_fatal`, matching MPI's default initial
+error handler for communicators. Pass `mp1::error_handler::returns` explicitly
+when the application uses `install_recoverable_errors()` or wants creation
+errors to surface as `mp1::mpi_error`; these source-less factories do not
+inherit the `MPI_COMM_WORLD`/`MPI_COMM_SELF` handler. Under MPI 4.1 §9.3.1 the
+handler must be a predefined handler or one created by
 `MPI_Comm_create_errhandler`; `MPI_ERRHANDLER_NULL` is the null handle and is
 **not** a valid handler. `mp1::error_handler` models only the predefined
 handlers, so a custom handler is installed with raw MPI or with
@@ -382,10 +386,11 @@ Contract details:
   each group every process passes the same local group and leader, and all
   processes pass the same stringtag.
 - `remote_group`/`remote_leader` are significant only at `local_leader`; a
-  non-leader may pass `mp1::group{}` and any remote leader. Intel MPI
-  2021.19.2 validates `remote_group` on every local rank, so portable code
-  passes the same valid remote group everywhere (see
-  [COMPATIBILITY.md](COMPATIBILITY.md)).
+  non-leader may pass `mp1::group{}` and an arbitrary non-wildcard remote
+  leader value. Wildcards are not permitted for either leader. For
+  portability, pass the same valid remote group and a valid remote leader on
+  every local rank. Intel MPI 2021.19.2 validates `remote_group` on every
+  local rank (see [COMPATIBILITY.md](COMPATIBILITY.md)).
 - `idup`/`idup_with_info` are nonblocking collective operations: every rank
   must issue them in the same order on the same source context. The hints of
   `idup_with_info` are captured at initiation, so the `info` object may be
@@ -1504,10 +1509,11 @@ three predefined values are the only `mp1::error_handler` values. A user
 handler created with `MPI_Comm_create_errhandler` is used through raw MPI, or
 attached to a communicator after creation with
 `MPI_Comm_set_errhandler(c.native_handle(), handler)` /
-`mp1::set_error_handler(c, predefined)`. The from-group factories require an
-explicit predefined handler because a group has no parent communicator to
-inherit one from; `MPI_ERRHANDLER_NULL` is the null handle, not a valid
-handler (MPI 4.1 §9.3.1).
+`mp1::set_error_handler(c, predefined)`. The from-group factories default to
+`MPI_ERRORS_ARE_FATAL` because a group has no parent communicator to inherit a
+handler from; pass `mp1::error_handler::returns` for the recoverable path.
+`MPI_ERRHANDLER_NULL` is the null handle, not a valid handler (MPI 4.1
+§9.3.1).
 
 MPI-backed objects may only be used while MPI is active. Operations that need
 MPI throw `std::runtime_error` before `mp1::init` or after `mp1::finalize`;
@@ -1541,7 +1547,9 @@ initializer list does not convert to a span, so spell the ranks as
 `group_range_incl`/`group_range_excl` take `std::span<const rank_range>`,
 validate stride/direction/bounds locally without enumerating the progression,
 and leave duplicate/overlapping ranges as an MPI-erroneous program rather than
-expanding them. A communicator's group is obtained with the free
+expanding them. Only the emitted ranks are required to be valid; a portable
+caller keeps `last` within the group even when it is not emitted. A
+communicator's group is obtained with the free
 `mp1::get_group(c)`; `file` and `window` also expose a member `get_group()`,
 and `mp1::get_group(w)` is the free window forwarder.
 
@@ -1647,14 +1655,14 @@ the NOLINT rules, and the local commands that match CI. The release checks are:
 - configure and build **425** build edges, which compile **285** C++20
   translation units; the release build enables `MP1_BUILD_PERF`, so the
   deterministic `perf_calls` gate is one of the CTest entries;
-- `ci/run-ctest.sh --test-dir build -LE nightly`: **305/305** non-nightly
-  entries in the default configuration, or **306/306** with
+- `ci/run-ctest.sh --test-dir build -LE nightly`: **303/303** non-nightly
+  entries in the default configuration, or **304/304** with
   `MP1_TEST_EXTRA_RANKS=ON` (one extra 5-rank persistent-collective entry);
-  **104** of them are compile-fail entries (**102** probes + 2 harness
+  **102** of them are compile-fail entries (**100** probes + 2 harness
   self-checks);
-- **102** compile-fail probes, **66** compile-pass controls and **9**
+- **100** compile-fail probes, **66** compile-pass controls and **9**
   compile-all API sources, all built by the same configure;
-- **93** unit-test sources carrying **532** Boost test cases;
+- **93** unit-test sources carrying **533** Boost test cases;
 - the wrap-coverage gate covers **177** wrapped MPI symbols across 34
   implementation files;
 - `ci/static-checks.sh` and `clang-format --dry-run --Werror`;

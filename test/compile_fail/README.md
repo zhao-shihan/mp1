@@ -33,7 +33,7 @@ runner on fixtures in `self_check/` and asserts:
 | positive control does not compile | fail |
 | no `EXPECT` supplied | fail |
 
-The set is **102** contract probes. They register **104** CTest entries: the 102
+The set is **100** contract probes. They register **102** CTest entries: the 100
 probes plus the runner self-check probe and the inverse runner self-check. The
 probes are:
 
@@ -135,8 +135,6 @@ probes are:
 | `layout_empty_removed.cc` | layout | `layout<T>::empty()` is removed (source-breaking); `contiguous(0)` is the zero-size layout and `mp1::empty_data` the explicit empty message. The positive control is `test/compile_pass/layout_zero_control.cc`. |
 | `take_communicator_const.cc` | request/result | `take_communicator(request&)` mutates the request and transfers ownership; a `const request&` cannot be a transfer source. |
 | `create_from_group_stringtag_wrong_type.cc` | communicator/from-group | The stringtag vocabulary is `std::string_view`, distinct from `mp1::tag`; there is no integer-tag conversion. |
-| `create_from_group_missing_info.cc` | communicator/from-group | Both `info` and the error handler are required; there is no default for either. |
-| `create_from_group_missing_handler.cc` | communicator/from-group | Both `info` and the error handler are required; a group has no parent communicator to inherit a handler from. |
 | `create_from_group_null_errhandler.cc` | communicator/from-group | MPI 4.1 §9.3.1: `MPI_ERRHANDLER_NULL` is the null handle, not a valid handler; `mp1::error_handler` models only the predefined handlers. |
 | `group_incl_braced_init.cc` | group | `group_incl`/`group_excl` take `std::span<const int>`; a braced initializer list does not convert, so ranks are spelled `std::array{...}`/`std::vector{...}`. |
 | `group_range_wrong_element.cc` | group | `group_range_incl`/`group_range_excl` take `std::span<const rank_range>`; a positional `std::array<int, 3>` does not convert, so first/last/stride cannot be silently swapped. |

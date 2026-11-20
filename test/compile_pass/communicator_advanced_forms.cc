@@ -18,15 +18,21 @@ void communicator_advanced_forms(const mp1::mpi_communicator& comm, const mp1::g
       local, "mp1-control-tag", hints, mp1::error_handler::returns);
   mp1::communicator from_group2 = mp1::communicator::create_from_group(
       local, std::string_view{"mp1-control-tag"}, mp1::info{}, mp1::error_handler::are_fatal);
+  mp1::communicator from_group_default =
+      mp1::communicator::create_from_group(local, "mp1-control-tag");
   mp1::communicator inter = mp1::communicator::intercomm_create_from_groups(
       local, 0, remote, 0, "mp1-control-tag", hints, mp1::error_handler::returns);
   mp1::communicator inter2 = mp1::communicator::intercomm_create_from_groups(
       local, 0, remote, 0, std::string_view{"mp1-control-tag"}, mp1::info{},
       mp1::error_handler::abort);
+  mp1::communicator inter_default =
+      mp1::communicator::intercomm_create_from_groups(local, 0, remote, 0, "mp1-control-tag");
   (void)from_group;
   (void)from_group2;
+  (void)from_group_default;
   (void)inter;
   (void)inter2;
+  (void)inter_default;
 
   // take_communicator() takes an lvalue request and returns an owning communicator.
   if (copy.has_result()) {

@@ -621,16 +621,18 @@ namespace mp1 {
     /// operation and returns an invalid owner without an MPI creation call.  A non-member call
     /// is MPI-erroneous and deliberately not diagnosed locally; MPI is the authority.
     ///
-    /// Both `hints` and `handler` are required (MPI order: info, then the MPI 4.1 error
-    /// handler).  mp1::info{} is the valid no-hints spelling.  Under MPI 4.1 §9.3.1 the handler
-    /// must be a predefined handler or one created by MPI_Comm_create_errhandler;
-    /// MPI_ERRHANDLER_NULL is the null handle and is not a valid handler.  mp1::error_handler
-    /// models only the predefined handlers, so a custom handler is installed with raw MPI or
-    /// with MPI_Comm_set_errhandler on native_handle() after creation.
-    [[nodiscard]] static communicator create_from_group(const group& gr,
-                                                        std::string_view stringtag,
-                                                        const info& hints,
-                                                        error_handler handler) {
+    /// `hints` defaults to `mp1::info{}` (MPI_INFO_NULL) and `handler` defaults to
+    /// `mp1::error_handler::are_fatal`, matching MPI's default initial error handler for
+    /// communicators.  Under MPI 4.1 §9.3.1 the handler must be a predefined handler or one
+    /// created by MPI_Comm_create_errhandler; MPI_ERRHANDLER_NULL is the null handle and is not
+    /// a valid handler.  mp1::error_handler models only the predefined handlers, so a custom
+    /// handler is installed with raw MPI or with MPI_Comm_set_errhandler on native_handle()
+    /// after creation.  A library that has called install_recoverable_errors() passes
+    /// `mp1::error_handler::returns` explicitly: these source-less factories do not inherit
+    /// the world/self handler.
+    [[nodiscard]] static communicator create_from_group(
+        const group& gr, std::string_view stringtag, const info& hints = {},
+        error_handler handler = error_handler::are_fatal) {
       const context ctx{"mp1::communicator::create_from_group"};
       if (not gr.is_valid())
         throw_invalid(ctx.operation, "invalid group");
@@ -653,15 +655,16 @@ namespace mp1 {
     /// stringtag.  Non-membership is MPI-erroneous and is deliberately left to MPI.
     ///
     /// `remote_group` and `remote_leader` are significant only at `local_leader`, so only the
-    /// leader validates them; a non-leader may pass group{} and any remote_leader value.  An
-    /// empty local group is a local operation returning an invalid owner.  Both `hints` and
-    /// `handler` are required, with the MPI 4.1 §9.3.1 validity rule described at
-    /// create_from_group().  The result is released with MPI_Comm_free (release_policy::free),
-    /// not MPI_Comm_disconnect.
+    /// leader validates them; a non-leader may pass group{} and an arbitrary non-wildcard
+    /// remote_leader value (wildcards are not permitted for either leader).  An
+    /// empty local group is a local operation returning an invalid owner.  `hints` defaults to
+    /// `mp1::info{}` and `handler` defaults to `mp1::error_handler::are_fatal`, with the MPI 4.1
+    /// §9.3.1 validity rule described at create_from_group().  The result is released with
+    /// MPI_Comm_free (release_policy::free), not MPI_Comm_disconnect.
     [[nodiscard]] static communicator intercomm_create_from_groups(
         const group& local_group, int local_leader, const group& remote_group,
-        int remote_leader, std::string_view stringtag, const info& hints,
-        error_handler handler) {
+        int remote_leader, std::string_view stringtag, const info& hints = {},
+        error_handler handler = error_handler::are_fatal) {
       const context ctx{"mp1::communicator::intercomm_create_from_groups"};
       if (not local_group.is_valid())
         throw_invalid(ctx.operation, "invalid local group");
@@ -715,7 +718,8 @@ namespace mp1 {
     /// process and are validated on every local rank.  `peer` and `remote_leader` are
     /// "significant only at the local_leader", so they are validated (and only used) when
     /// `local.rank() == local_leader`; a non-leader may pass a default (MPI_COMM_NULL) peer
-    /// and any remote_leader value and must still enter the collective call.  Every process
+    /// and an arbitrary non-wildcard remote_leader value and must still enter the collective
+    /// call.  Every process
     /// in a group must pass the same local/local_leader/tag; mp1 does not add a hidden
     /// agreement collective to check that (it is the application's MPI obligation).
     [[nodiscard]] static communicator intercomm_create(const mpi_communicator& local,

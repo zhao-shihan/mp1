@@ -36,8 +36,9 @@ int main() {
             << "\tcomm valid: " << (comm_without_0.is_valid() ? "yes" : "no") << std::endl;
 
   // A group built from MPI-shaped (first, last, stride) triplets, then a communicator created
-  // from that group.  create_from_group is collective over the group's members only and needs
-  // both an info (here the valid no-hints spelling) and a predefined error handler.
+  // from that group.  create_from_group is collective over the group's members only; info and
+  // the error handler default to MPI_INFO_NULL and MPI_ERRORS_ARE_FATAL.  This example passes
+  // MPI_ERRORS_RETURN explicitly so creation errors would surface as mp1::mpi_error.
   auto world_group = mp1::get_group(comm_world);
   std::array<mp1::rank_range, 1> every_rank{mp1::rank_range{0, comm_world.size() - 1, 1}};
   auto range_group = mp1::group_range_incl(world_group, every_rank);

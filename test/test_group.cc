@@ -168,9 +168,14 @@ BOOST_AUTO_TEST_CASE(group) {
     BOOST_TEST(excluded_all.is_empty());
     BOOST_TEST(excluded_all.size() == 0);
 
-    // A range whose last value is not emitted may have an out-of-bounds last.
-    std::array<mp1::rank_range, 1> coarse{
-        mp1::rank_range{0, group_size + 99, group_size + 100}};
+    // A range whose last value is not emitted is legal.  The public test form keeps last in
+    // bounds: MPI 4.1 requires the emitted ranks to be valid, and keeping last within the
+    // group is the portable spelling.  The wrapper's local validation still accepts the
+    // standard out-of-range last form; check it directly.
+    BOOST_CHECK_NO_THROW(mp1::detail::require_valid_range(
+        mp1::rank_range{0, group_size + 99, group_size + 100}, group_size,
+        mp1::context{"test_group range validation"}));
+    std::array<mp1::rank_range, 1> coarse{mp1::rank_range{0, group_size - 1, group_size + 1}};
     const mp1::group ranged_coarse = mp1::group_range_incl(group_world, coarse);
     BOOST_TEST(ranged_coarse.size() == 1);
     BOOST_TEST(ranged_coarse.native_handle() != MPI_GROUP_EMPTY);

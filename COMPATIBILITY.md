@@ -47,11 +47,13 @@ consumer to C++20. Boost.Test is needed only for the in-tree test suite.
   process-lifetime `comm_world()`/`comm_self()` views and the always-available
   `comm_null()` sentinel. The release policy is fixed at construction: `free`
   for the ordinary factories, `disconnect` for spawn/parent/adopted
-  connections. Both from-group factories require an explicit `info` and
-  predefined `mp1::error_handler`; `MPI_ERRHANDLER_NULL` is the null handle,
-  not a valid handler (MPI 4.1 §9.3.1), so a provider that rejects it is
-  conforming. mp1 has no owning error-handler bridge: a custom handler is raw
-  MPI or `MPI_Comm_set_errhandler` on the created communicator. Non-membership
+  connections. Both from-group factories default `info` to `mp1::info{}` and
+  the handler to `MPI_ERRORS_ARE_FATAL` (MPI's default initial error handler
+  for communicators); pass `mp1::error_handler::returns` for the recoverable
+  path. `MPI_ERRHANDLER_NULL` is the null handle, not a valid handler
+  (MPI 4.1 §9.3.1), so a provider that rejects it is conforming. mp1 has no
+  owning error-handler bridge: a custom handler is raw MPI or
+  `MPI_Comm_set_errhandler` on the created communicator. Non-membership
   of either from-group call is MPI-erroneous and is deliberately not diagnosed
   locally.
 - Point-to-point: blocking, buffered, synchronous and ready sends, each in
@@ -485,7 +487,7 @@ versions and configurations are recorded in the release evidence.
   a non-leader `MPI_GROUP_NULL` with `MPI_ERR_GROUP` ("Null group"). It ignores
   an invalid `remote_leader` at non-leaders. mp1 follows the standard and keeps
   the leader-only validation; portable code passes the same valid remote group
-  on every local rank and a valid remote leader at the leader.
+  and a valid remote leader on every local rank.
 - **Large-count routines.** mp1 consistently uses the MPI 4.1 `_c` large-count
   entry points; a provider that advertises MPI 4.1 but has an incomplete `_c`
   implementation is not supported.

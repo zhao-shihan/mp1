@@ -18,9 +18,12 @@ case). The rest of the 1.0 public entry points remain.
   new `request_kind`, no request factory and no new header.
 - `communicator::create_from_group` (`MPI_Comm_create_from_group`) and
   `communicator::intercomm_create_from_groups`
-  (`MPI_Intercomm_create_from_groups`), with MPI 4.1 argument order. Both
-  `info` and `mp1::error_handler` are required; `MPI_ERRHANDLER_NULL` is the
-  null handle, not a valid handler (MPI 4.1 §9.3.1).
+  (`MPI_Intercomm_create_from_groups`), with MPI 4.1 argument order. `info`
+  defaults to `mp1::info{}` and the handler to
+  `mp1::error_handler::are_fatal` (MPI's default initial error handler for
+  communicators); pass `mp1::error_handler::returns` for the recoverable path.
+  `MPI_ERRHANDLER_NULL` is the null handle, not a valid handler (MPI 4.1
+  §9.3.1).
 - `mp1::rank_range`, `group_range_incl` and `group_range_excl`
   (`MPI_Group_range_*`), validated locally without expanding the progression.
 

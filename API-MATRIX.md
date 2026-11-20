@@ -77,15 +77,15 @@ families × 3 lifetimes; 5 blocking and 4 nonblocking/persistent receive
 policies; 42 RMA origin/result/target shapes; 129 file declarations, of which
 96 are data access; and the per-family descriptors in §§2–7.
 
-The complete verification suite is **305** non-nightly CTest entries in the
-default configuration (**306** with `MP1_TEST_EXTRA_RANKS=ON`, which adds the
-5-rank persistent-collective entry), **104** of which are compile-fail entries
-(**102** contract probes + 2 harness self-checks), plus **66** compile-pass
+The complete verification suite is **303** non-nightly CTest entries in the
+default configuration (**304** with `MP1_TEST_EXTRA_RANKS=ON`, which adds the
+5-rank persistent-collective entry), **102** of which are compile-fail entries
+(**100** contract probes + 2 harness self-checks), plus **66** compile-pass
 controls and **9** compile-all API sources. The tree has **93** unit-test
-sources with **532** Boost test cases; the full build compiles **285** C++20
+sources with **533** Boost test cases; the full build compiles **285** C++20
 translation units and has **425** build edges when tests, examples and perf are
 enabled (the release build enables `MP1_BUILD_PERF`, whose `perf_calls` gate is
-one of the 305 entries); the wrap-coverage gate covers **177** MPI symbols
+one of the 303 entries); the wrap-coverage gate covers **177** MPI symbols
 across 34 implementation files.
 
 ## How to read this matrix

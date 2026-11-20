@@ -1,7 +1,8 @@
 // MPI_Comm_create_from_group / MPI_Intercomm_create_from_groups tests.
 //
-// Both factories are collective over a group (or the union of two groups) and require both an
-// info and an mp1::error_handler.  The tests cover full and subset groups at 2 and 4 ranks,
+// Both factories are collective over a group (or the union of two groups).  `info` defaults to
+// MPI_INFO_NULL and the handler to MPI_ERRORS_ARE_FATAL; the tests cover explicit handlers and
+// defaults, full and subset groups at 2 and 4 ranks,
 // empty groups, the local validation paths, error-handler attachment, and the leader-only
 // remote arguments.  Non-membership is deliberately not diagnosed locally (MPI is the
 // authority), so no test expects a local throw for it.
@@ -122,6 +123,18 @@ BOOST_AUTO_TEST_CASE(create_from_group_are_fatal_success) {
   }
 }
 
+BOOST_AUTO_TEST_CASE(create_from_group_default_handler) {
+  require_world();
+  const auto world = mp1::comm_world();
+  auto world_group = mp1::get_group(world);
+
+  // No info/handler arguments: the defaults are MPI_INFO_NULL and MPI_ERRORS_ARE_FATAL.
+  auto created = mp1::communicator::create_from_group(world_group, "mp1-create-default");
+  check_created(created, world);
+  check_handler(created, mp1::error_handler::are_fatal);
+  created.free();
+}
+
 BOOST_AUTO_TEST_CASE(create_from_group_empty_and_validation) {
   require_world();
   const auto world = mp1::comm_world();
@@ -194,6 +207,14 @@ BOOST_AUTO_TEST_CASE(intercomm_from_groups_two_ranks) {
   mp1::sendrecv(inter, send_value, 0, mp1::tag{901}, recv_value, 0, mp1::tag{901});
   BOOST_TEST((recv_value == 100 + (1 - world.rank())));
   inter.free();
+
+  // Default info/handler: MPI_INFO_NULL and MPI_ERRORS_ARE_FATAL.
+  auto inter_default = mp1::communicator::intercomm_create_from_groups(local, 0, remote, 0,
+                                                                       "mp1-inter-2-default");
+  BOOST_REQUIRE(inter_default.is_valid());
+  BOOST_TEST((inter_default.remote_size() == 1));
+  check_handler(inter_default, mp1::error_handler::are_fatal);
+  inter_default.free();
 }
 
 BOOST_AUTO_TEST_CASE(intercomm_from_groups_four_ranks) {
@@ -217,10 +238,9 @@ BOOST_AUTO_TEST_CASE(intercomm_from_groups_four_ranks) {
   const int local_rank = local.rank();
   const int local_leader = 0;
 
-  // Every local rank passes a valid remote group (portable across the provider matrix);
-  // non-leaders pass an invalid remote_leader, which MPI 4.1 says is significant only at
-  // local_leader and therefore ignored.
-  const int remote_leader = local_rank == local_leader ? 0 : -1;
+  // Every local rank passes a valid remote group and a valid remote leader.  MPI 4.1 says
+  // both are significant only at local_leader; the portable form keeps them valid everywhere.
+  const int remote_leader = 0;
   auto inter = mp1::communicator::intercomm_create_from_groups(
       local, local_leader, remote, remote_leader, "mp1-inter-4", mp1::info{},
       mp1::error_handler::returns);
