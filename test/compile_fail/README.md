@@ -33,7 +33,7 @@ runner on fixtures in `self_check/` and asserts:
 | positive control does not compile | fail |
 | no `EXPECT` supplied | fail |
 
-The set is **94** contract probes. They register **96** CTest entries: the 94
+The set is **102** contract probes. They register **104** CTest entries: the 102
 probes plus the runner self-check probe and the inverse runner self-check. The
 probes are:
 
@@ -133,9 +133,17 @@ probes are:
 | `rma_reflection_120_members.cc` | layout/reflection | Reflection expands at most 119 named members; the 120-member probe fails the static_assert (`supports at most 119 members`). |
 | `layout_builder_braced_init.cc` | layout builders | The five parameter builders take a named contiguous range (`std::array`/`std::vector`/`std::span`) or `.add()`, not a braced list (a braced-init-list does not convert to `std::span`); the positive control is `test/compile_pass/layout_builder_named_ranges.cc`. |
 | `layout_empty_removed.cc` | layout | `layout<T>::empty()` is removed (source-breaking); `contiguous(0)` is the zero-size layout and `mp1::empty_data` the explicit empty message. The positive control is `test/compile_pass/layout_zero_control.cc`. |
+| `take_communicator_const.cc` | request/result | `take_communicator(request&)` mutates the request and transfers ownership; a `const request&` cannot be a transfer source. |
+| `create_from_group_stringtag_wrong_type.cc` | communicator/from-group | The stringtag vocabulary is `std::string_view`, distinct from `mp1::tag`; there is no integer-tag conversion. |
+| `create_from_group_missing_info.cc` | communicator/from-group | Both `info` and the error handler are required; there is no default for either. |
+| `create_from_group_missing_handler.cc` | communicator/from-group | Both `info` and the error handler are required; a group has no parent communicator to inherit a handler from. |
+| `create_from_group_null_errhandler.cc` | communicator/from-group | MPI 4.1 §9.3.1: `MPI_ERRHANDLER_NULL` is the null handle, not a valid handler; `mp1::error_handler` models only the predefined handlers. |
+| `group_incl_braced_init.cc` | group | `group_incl`/`group_excl` take `std::span<const int>`; a braced initializer list does not convert, so ranks are spelled `std::array{...}`/`std::vector{...}`. |
+| `group_range_wrong_element.cc` | group | `group_range_incl`/`group_range_excl` take `std::span<const rank_range>`; a positional `std::array<int, 3>` does not convert, so first/last/stride cannot be silently swapped. |
+| `free_idup_removed.cc` | communicator/idup | `idup` is a static member of `communicator`, not a free function; `take_communicator` is the free result transfer. |
 
 There is no absolute/heterogeneous target-layout form to reject (`layout<void>`
-is not part of 1.0; MPI 4.1 §12.3.1), and `layout<T>` is the only target form.
+is not part of the typed surface; MPI 4.1 §12.3.1), and `layout<T>` is the only target form.
 
 `test/harness/compile_fail_self_check.cc` is a real `#error` probe with an
 expectation and a control; `harness_compile_fail_runner_selfcheck` runs the
@@ -147,4 +155,4 @@ owned by mp1.
 `harness_compile_pass_controls` compiles every source in `test/compile_pass/`
 with the same command line as a probe control, so a control whose probe was
 removed or renamed cannot become an inert file.  Probe-bound controls are still
-compiled by their probe; this check covers the whole directory (64 sources).
+compiled by their probe; this check covers the whole directory (66 sources).

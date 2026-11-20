@@ -29,8 +29,8 @@ a complete MPI 4.1 binding; see [Scope](#scope) and
 
 The headers are the API reference; `///` comments document the public
 declarations. There is no generated API documentation. The audited surface is
-**641** public declarations (**620** across the sixteen family headers;
-**607** unique signatures, **586** across the sixteen). The count is a
+**649** public declarations (**628** across the sixteen family headers;
+**615** unique signatures, **594** across the sixteen). The count is a
 scope-aware function/member declaration count, not a count of operation
 forms: the per-family map and the exact counting rule are in
 [API-MATRIX.md](API-MATRIX.md).
@@ -50,22 +50,23 @@ collectives, including dense `blocks` descriptors, typed layout descriptors,
 layout borrows and `reduce_local`; one-sided communication and shared-memory
 windows; file I/O (core access, individual and shared file pointers, atomicity,
 type-extent queries, member-based blocking/nonblocking/split data access);
-communicator management (`dup`, `split`, `split_type`, `create`,
-`create_group`, `merge`, `intercomm_create`, `adopt`); process spawning; the
-MPI 4.1 process/communicator buffered-send buffers; groups, info, layouts,
-status, request completion, and predefined error-handler set/get.
+communicator management (`dup`, `dup_with_info`, `idup`/`idup_with_info`
+with `take_communicator`, `split`, `split_type`, `create`, `create_group`,
+`create_from_group`, `merge`, `intercomm_create`,
+`intercomm_create_from_groups`, `adopt`); process spawning; the MPI 4.1
+process/communicator buffered-send buffers; groups (including `group_incl`/
+`group_excl` over `std::span<const int>` and `group_range_incl`/
+`group_range_excl`), info, layouts, status, request completion, and predefined
+error-handler set/get.
 
-The following are deliberately **not** wrapped in 1.0:
+The following are deliberately **not** wrapped:
 
 - topology, Cartesian/graph/distributed-graph communicators, neighborhood
   collectives, and grid decomposition types;
-- advanced communicator creation (`MPI_Comm_idup*`,
-  `MPI_Comm_create_from_group`, `MPI_Intercomm_create_from_groups`,
-  `MPI_Group_range_*`);
 - `MPI_Alltoallw`, `MPI_Type_create_darray`, runtime raw-struct/array datatype
   construction, and an owning/raw `MPI_Datatype` bridge;
 - a public `MPI_Pack`/`MPI_Unpack` API (the wrapper's staging is internal);
-- file `get_view` (deferred to 1.1 with the owning raw-datatype bridge),
+- file `get_view` (future work; requires the owning raw-datatype bridge),
   user datareps/`register_datarep`, and raw heterogeneous views;
 - MPI Sessions and partitioned point-to-point;
 - attributes/keyvals, user error-handler callbacks, DPM connect/accept/join,
@@ -104,7 +105,7 @@ top-level project. Set `-DMP1_BUILD_EXAMPLES=OFF` to skip the examples, and
 Downstream CMake:
 
 ```cmake
-find_package(mp1 1.1 CONFIG REQUIRED)
+find_package(mp1 2.0 CONFIG REQUIRED)
 
 add_executable(app main.cc)
 target_link_libraries(app PRIVATE mp1::mp1)
@@ -292,7 +293,7 @@ pointer to an owner is a compile error.
 
 | Construction | Policy | Destructor | `free()` | `disconnect()` |
 |---|---|---|---|---|
-| `dup`/`dup_with_info`/`split`/`split_type`/`create`/`create_group`/`merge`/`intercomm_create`/`adopt` | `free` | `MPI_Comm_free` | allowed | allowed |
+| `dup`/`dup_with_info`/`idup`/`idup_with_info`/`split`/`split_type`/`create`/`create_group`/`create_from_group`/`merge`/`intercomm_create`/`intercomm_create_from_groups`/`adopt` | `free` | `MPI_Comm_free` | allowed | allowed |
 | `spawn`/`spawn_multiple`/`parent`/`adopt_connected` | `disconnect` | `MPI_Comm_disconnect` | rejected (`std::logic_error`) | required collective release |
 
 `free()`/`disconnect()` make one attempt; on an MPI error the object becomes
@@ -313,7 +314,7 @@ returns; MPI 4.1 §11.4.2 describes the abort as a best attempt. A
 | `file` | Owner-only, no view; member data access over one shared state. | Move-only. | Finish split, then collective close; may block. | `release()` |
 | `group` | Owner-only, move-only, no view. | Move-only. | `MPI_Group_free` (`MPI_GROUP_EMPTY` is not owned). | None public |
 | `info` | Copyable owner. | Copy duplicates (`MPI_Info_dup`); move steals. | `MPI_Info_free`; always available. | None |
-| `request` | Move-only owner. | Move-only. | State-machine drop policy; may wait/cancel. | `release()` |
+| `request` | Move-only owner; a completed `idup` request also owns its result until `take_communicator()`. | Move-only. | State-machine drop policy; may wait/cancel, or free a `result_pending` duplicate. | `release()` |
 | `message` | Move-only owner of one matched message. | Move-only. | Discards a still-owned message; `noexcept`. | `release()` |
 | `layout<T>` | Copyable owner of one committed `MPI_Datatype`. | Copy duplicates; move transfers. | `MPI_Type_free`. | None; `native_handle()` borrows |
 
@@ -330,6 +331,79 @@ destruction: `MPI_Comm_free`/`MPI_Comm_disconnect`, `MPI_Win_free`, file
 split/close, or the request drop policy. These operations may be collective
 and/or blocking, so every rank must reach the same assignment in the same
 order.
+
+### Advanced communicator creation
+
+`mp1::communicator` also wraps the MPI 4.1 source-less factories and the
+nonblocking duplicate:
+
+```cpp
+// Collective over the members of gr; every member passes the same group and stringtag.
+auto gr = mp1::group_range_incl(mp1::get_group(world),
+                                std::array{mp1::rank_range{0, world.size() - 1, 1}});
+mp1::communicator created = mp1::communicator::create_from_group(
+    gr, "my-app-communicator", mp1::info{}, mp1::error_handler::returns);
+
+// Collective over the union of local_group and remote_group.
+mp1::communicator inter = mp1::communicator::intercomm_create_from_groups(
+    local_group, 0, remote_group, 0, "my-app-intercomm", mp1::info{},
+    mp1::error_handler::returns);
+
+// Nonblocking duplicate: complete the request, then take the owning result.
+mp1::request r = mp1::communicator::idup(world);
+r.wait();
+mp1::communicator duplicate = mp1::take_communicator(r);
+```
+
+Both from-group factories take MPI's argument order and require **both** the
+`info` and the `mp1::error_handler`; there are no defaults. `mp1::info{}` is
+the valid no-hints spelling (it passes `MPI_INFO_NULL`, which MPI accepts).
+Under MPI 4.1 §9.3.1 the handler must be a predefined handler or one created by
+`MPI_Comm_create_errhandler`; `MPI_ERRHANDLER_NULL` is the null handle and is
+**not** a valid handler. `mp1::error_handler` models only the predefined
+handlers, so a custom handler is installed with raw MPI or with
+`MPI_Comm_set_errhandler` on `native_handle()` after creation. `idup`
+inherits the source communicator's handler exactly like `MPI_Comm_dup`.
+
+A `stringtag` is a `std::string_view`, a distinct vocabulary from `mp1::tag`
+(there is no conversion between them). It must contain no embedded NUL and be
+shorter than `MPI_MAX_STRINGTAG_LEN` (the MPI macro includes the terminating
+NUL); the empty string is legal. The view is borrowed for the blocking call
+only, and all participating processes must pass the same stringtag.
+
+Contract details:
+
+- An empty `group`/`local_group` is a local operation returning an invalid
+  owner without a communicator-creation call. An empty remote group at the
+  leader is passed to MPI, which returns `MPI_COMM_NULL`.
+- Non-membership of either from-group call is an MPI-erroneous precondition
+  that mp1 deliberately does not diagnose locally; MPI is the authority.
+- `local_group` and `remote_group` must be disjoint (MPI obligation). Within
+  each group every process passes the same local group and leader, and all
+  processes pass the same stringtag.
+- `remote_group`/`remote_leader` are significant only at `local_leader`; a
+  non-leader may pass `mp1::group{}` and any remote leader. Intel MPI
+  2021.19.2 validates `remote_group` on every local rank, so portable code
+  passes the same valid remote group everywhere (see
+  [COMPATIBILITY.md](COMPATIBILITY.md)).
+- `idup`/`idup_with_info` are nonblocking collective operations: every rank
+  must issue them in the same order on the same source context. The hints of
+  `idup_with_info` are captured at initiation, so the `info` object may be
+  destroyed after the call. Keep the source communicator valid until the
+  request completes.
+- A successful `idup` completion enters `request_state::result_pending`: the
+  request owns the new `MPI_Comm` but no longer holds a live `MPI_Request`.
+  `request::has_result()` is the result-axis query, while
+  `is_valid()`/`operator bool` stay handle-only and are false in that state.
+  `take_communicator(request&)` transfers the duplicate into an owning
+  `mp1::communicator`; a second take is `std::invalid_argument`, and a take
+  before completion is `std::logic_error`. `wait`/`test` and every bulk
+  completion function complete the request normally and keep the result in the
+  request.
+- Destroying a `result_pending` request frees its duplicate with
+  `MPI_Comm_free`, which is collective and can block (`drop_would_block()` is
+  true); `release()` is the no-MPI-call escape that leaks it. Complete and take
+  idup results before letting an exception unwind a batch.
 
 ## Namespaces and ADL
 
@@ -638,6 +712,13 @@ A committed persistent slot becomes inactive and remains valid, so it can be
 `start()`ed for the next cycle. `test_all` returns `nullopt` when not every
 operation has completed, and MPI then modifies no request; the PENDING rule is
 defensive there because `flag == true` means every operation completed.
+
+A `result_pending` `MPI_Comm_idup` slot is finished but owns a result, so it is
+inactive for every bulk completion function: `wait_all`/`test_all` report the
+empty status for it and it is omitted (or `MPI_UNDEFINED`) in the any/some
+forms. Its duplicate stays in the request; call `take_communicator()` to get
+it. A PENDING idup slot stays active exactly like any other request and cannot
+be taken until a later completion produces the result.
 
 `wait_some`/`test_some` return only completed slots, as indices into the
 original span. A provider-reported PENDING slot is omitted from the returned
@@ -1290,7 +1371,7 @@ the split state is unknown, a request is outstanding, or MPI is gone.
 `set_atomicity`, `seek_shared` and every `*_at_all`/`*_all`/`*_ordered` family
 are collective. `remove` is not collective.
 
-Outside 1.0: `get_view`, `register_datarep`/user data representations, owning
+Not implemented: `get_view`, `register_datarep`/user data representations, owning
 or user file error-handler objects (the predefined handler set/get is
 available), and a raw heterogeneous `set_view`. Use `native_handle()` for those
 raw MPI operations.
@@ -1418,6 +1499,16 @@ initial handler and start with `MPI_ERRORS_ARE_FATAL`; files start with
 process-local and idempotent, and overwrites any handler the application
 installed on `MPI_COMM_WORLD`/`MPI_COMM_SELF`.
 
+There is no owning error-handler bridge and no callback registration API: the
+three predefined values are the only `mp1::error_handler` values. A user
+handler created with `MPI_Comm_create_errhandler` is used through raw MPI, or
+attached to a communicator after creation with
+`MPI_Comm_set_errhandler(c.native_handle(), handler)` /
+`mp1::set_error_handler(c, predefined)`. The from-group factories require an
+explicit predefined handler because a group has no parent communicator to
+inherit one from; `MPI_ERRHANDLER_NULL` is the null handle, not a valid
+handler (MPI 4.1 §9.3.1).
+
 MPI-backed objects may only be used while MPI is active. Operations that need
 MPI throw `std::runtime_error` before `mp1::init` or after `mp1::finalize`;
 destructors are `noexcept`, guard the same condition and abandon handles
@@ -1442,8 +1533,15 @@ a default-constructed `info{}`.
 (`MPI_GROUP_NULL`) and `group::empty()` is the valid predefined empty group.
 Equality is `MPI_IDENT` and is MPI-free when either operand is invalid or both
 native handles are equal. `compare()` returns `identical`/`similar`/`unequal`.
-`translate` accepts `MPI_PROC_NULL`; `group_incl`/`group_excl` reject duplicate
-ranks locally. A communicator's group is obtained with the free
+`translate` accepts `MPI_PROC_NULL`. `group_incl`/`group_excl` take
+`std::span<const int>` and reject duplicate or invalid ranks locally; a braced
+initializer list does not convert to a span, so spell the ranks as
+`std::array{...}` or `std::vector{...}` (this is a deliberate source break).
+`mp1::rank_range` is `{first, last, stride}` with MPI 4.1 §7.3.2 semantics:
+`group_range_incl`/`group_range_excl` take `std::span<const rank_range>`,
+validate stride/direction/bounds locally without enumerating the progression,
+and leave duplicate/overlapping ranges as an MPI-erroneous program rather than
+expanding them. A communicator's group is obtained with the free
 `mp1::get_group(c)`; `file` and `window` also expose a member `get_group()`,
 and `mp1::get_group(w)` is the free window forwarder.
 
@@ -1546,17 +1644,17 @@ Formatting and static analysis are pinned to LLVM 21.1.8. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the clang-format and clang-tidy policy,
 the NOLINT rules, and the local commands that match CI. The release checks are:
 
-- configure and build **416** build edges, which compile **279** C++20
+- configure and build **425** build edges, which compile **285** C++20
   translation units; the release build enables `MP1_BUILD_PERF`, so the
   deterministic `perf_calls` gate is one of the CTest entries;
-- `ci/run-ctest.sh --test-dir build -LE nightly`: **292/292** non-nightly
-  entries in the default configuration, or **293/293** with
+- `ci/run-ctest.sh --test-dir build -LE nightly`: **305/305** non-nightly
+  entries in the default configuration, or **306/306** with
   `MP1_TEST_EXTRA_RANKS=ON` (one extra 5-rank persistent-collective entry);
-  **96** of them are compile-fail entries (**94** probes + 2 harness
+  **104** of them are compile-fail entries (**102** probes + 2 harness
   self-checks);
-- **94** compile-fail probes, **64** compile-pass controls and **9**
+- **102** compile-fail probes, **66** compile-pass controls and **9**
   compile-all API sources, all built by the same configure;
-- **90** unit-test sources carrying **509** Boost test cases;
+- **93** unit-test sources carrying **532** Boost test cases;
 - the wrap-coverage gate covers **177** wrapped MPI symbols across 34
   implementation files;
 - `ci/static-checks.sh` and `clang-format --dry-run --Werror`;

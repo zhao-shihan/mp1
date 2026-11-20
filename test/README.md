@@ -10,27 +10,27 @@ The default (non-nightly) release configuration measures:
 
 | Item | Count |
 |---|---:|
-| CTest entries (default) | **292** |
-| CTest entries with `MP1_TEST_EXTRA_RANKS=ON` | **293** |
-| compile-fail CTest entries | **96** (94 contract probes + 2 harness self-checks) |
-| contract compile-fail probes (`test/compile_fail/*.cc`) | **94** |
-| compile-pass controls (`test/compile_pass/*.cc`) | **64** |
+| CTest entries (default) | **305** |
+| CTest entries with `MP1_TEST_EXTRA_RANKS=ON` | **306** |
+| compile-fail CTest entries | **104** (102 contract probes + 2 harness self-checks) |
+| contract compile-fail probes (`test/compile_fail/*.cc`) | **102** |
+| compile-pass controls (`test/compile_pass/*.cc`) | **66** |
 | compile-all API sources | **9** |
-| unit-test sources (`test/test_*.cc`) | **90** |
-| Boost test cases in those sources | **509** |
-| C++20 translation units in the full build | **279** |
-| Ninja build edges (tests + examples + perf) | **416** |
+| unit-test sources (`test/test_*.cc`) | **93** |
+| Boost test cases in those sources | **532** |
+| C++20 translation units in the full build | **285** |
+| Ninja build edges (tests + examples + perf) | **425** |
 | wrapped MPI symbols (`harness_wrap_coverage`) | **177** (34 implementation files) |
 
 `MP1_TEST_EXTRA_RANKS=ON` adds one nightly 5-rank entry (the asymmetric 3+2
-intercommunicator run of the persistent-collective unit), for 293 entries; it
+intercommunicator run of the persistent-collective unit), for 306 entries; it
 is off in the default count. The release build enables `MP1_BUILD_PERF`, so the
-deterministic `perf_calls` gate is one of the 292 default entries; the nightly
+deterministic `perf_calls` gate is one of the 305 default entries; the nightly
 timing-ratio `perf_ratios` entry needs the separate `MP1_BUILD_PERF_RATIOS`
 opt-in and is excluded by `-LE nightly`. Header self-containment and
-compile-all are build gates; the 64 compile-pass controls are compiled by the
+compile-all are build gates; the 66 compile-pass controls are compiled by the
 `harness_compile_pass_controls` CTest entry, and the two compile-fail harness
-self-checks are the extra entries included in the 96.
+self-checks are the extra entries included in the 104.
 
 ## CTest jobs vs MPI ranks
 

@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -33,5 +34,27 @@ int main() {
   mp1::barrier(comm_world);
   std::cout << "comm_world  rank: " << comm_world.rank()
             << "\tcomm valid: " << (comm_without_0.is_valid() ? "yes" : "no") << std::endl;
+
+  // A group built from MPI-shaped (first, last, stride) triplets, then a communicator created
+  // from that group.  create_from_group is collective over the group's members only and needs
+  // both an info (here the valid no-hints spelling) and a predefined error handler.
+  auto world_group = mp1::get_group(comm_world);
+  std::array<mp1::rank_range, 1> every_rank{mp1::rank_range{0, comm_world.size() - 1, 1}};
+  auto range_group = mp1::group_range_incl(world_group, every_rank);
+  auto from_group = mp1::communicator::create_from_group(
+      range_group, "mp1-example-communicator", mp1::info{}, mp1::error_handler::returns);
+  std::cout << "from_group  rank: " << from_group.rank() << "\tsize: " << from_group.size()
+            << std::endl;
+
+  // MPI_Comm_idup is nonblocking: the duplicate is available only after completion, then
+  // take_communicator transfers ownership out of the request.
+  mp1::request idup = mp1::communicator::idup(from_group);
+  (void)idup.wait();
+  auto idup_comm = mp1::take_communicator(idup);
+  std::cout << "idup        rank: " << idup_comm.rank() << "\tsize: " << idup_comm.size()
+            << std::endl;
+  idup_comm.free();
+  from_group.free();
+
   return EXIT_SUCCESS;
 }

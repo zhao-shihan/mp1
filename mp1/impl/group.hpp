@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <limits>
+#include <memory>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -24,14 +26,27 @@ namespace mp1 {
     unequal = MPI_UNEQUAL
   };
 
+  /// One MPI_Group_range_incl/excl triplet.  The field order is MPI's (first, last, stride).
+  ///
+  /// The default {0, 0, 1} is a valid one-rank range, so value-initialized arrays/vectors never
+  /// contain indeterminate fields.  `stride` must be nonzero; `first > last` is legal with a
+  /// negative stride.  Every emitted rank must be a valid, distinct rank of the group (MPI 4.1
+  /// §7.3.2); mp1 validates stride, direction and the computed endpoints locally but does not
+  /// expand overlapping/duplicate ranges (that would defeat the range form's scalability).
+  struct rank_range {
+    int first{0};
+    int last{0};
+    int stride{1};
+  };
+
   namespace detail {
     struct group_factory;
 
     /// MPI 4.1 §7.3.2: the ranks of MPI_Group_incl/excl must be valid and all distinct.
-    inline void require_distinct_ranks(const std::vector<int>& ranks, const context& ctx) {
+    inline void require_distinct_ranks(std::span<const int> ranks, const context& ctx) {
       if (ranks.size() < 2)
         return;
-      std::vector<int> sorted{ranks};
+      std::vector<int> sorted{ranks.begin(), ranks.end()};
       std::sort(sorted.begin(), sorted.end());
       const auto duplicate = std::adjacent_find(sorted.begin(), sorted.end());
       if (duplicate != sorted.end()) {
@@ -197,12 +212,88 @@ namespace mp1 {
       }
     };
 
-    [[nodiscard]] inline std::size_t group_rank_count(const std::vector<int>& ranks,
+    [[nodiscard]] inline std::size_t group_rank_count(std::span<const int> ranks,
                                                       const context& ctx) {
       if (ranks.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
         throw_invalid(ctx.operation, "more than INT_MAX ranks");
       }
       return ranks.size();
+    }
+
+    [[nodiscard]] inline std::size_t group_range_count(std::span<const rank_range> ranges,
+                                                       const context& ctx) {
+      if (ranges.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        throw_invalid(ctx.operation, "more than INT_MAX ranges");
+      }
+      return ranges.size();
+    }
+
+    /// Validate one (first, last, stride) triplet without enumerating the progression.
+    ///
+    /// MPI 4.1 §7.3.2: stride must be nonzero, first must be a valid rank, first > last is legal
+    /// with a negative stride, and every emitted rank must be a valid rank of the group.  The
+    /// last value itself may be outside the group when it is not emitted (for example
+    /// (0, 99, 100) emits only rank 0).  Duplicate/overlapping ranges are not expanded: the
+    /// standard makes distinctness an erroneous-program obligation, and expanding would turn
+    /// the range form into group_incl.
+    inline void require_valid_range(const rank_range& range, int group_size,
+                                    const context& ctx) {
+      if (range.stride == 0) {
+        detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
+                                               "range stride is zero");
+      }
+      if (range.first < 0 or range.first >= group_size) {
+        detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
+                                               "range first rank {} is outside [0,{})",
+                                               range.first, group_size);
+      }
+      if (range.first != range.last and (range.last > range.first) != (range.stride > 0)) {
+        detail::fail_as<std::invalid_argument>(
+            ctx, std::source_location::current(),
+            "range (first {}, last {}, stride {}) direction does not match its stride",
+            range.first, range.last, range.stride);
+      }
+      const long long gap = static_cast<long long>(range.last) - range.first;
+      const long long steps = gap / range.stride;
+      const long long last_emitted = static_cast<long long>(range.first) + steps * range.stride;
+      if (last_emitted < 0 or last_emitted >= group_size) {
+        detail::fail_as<std::invalid_argument>(
+            ctx, std::source_location::current(),
+            "range (first {}, last {}, stride {}) emits rank {} outside [0,{})", range.first,
+            range.last, range.stride, last_emitted, group_size);
+      }
+    }
+
+    inline void require_valid_ranges(const group& g, std::span<const rank_range> ranges,
+                                     const context& ctx) {
+      if (ranges.empty())
+        return;
+      const int group_size = g.size();
+      for (const rank_range& range : ranges)
+        require_valid_range(range, group_size, ctx);
+    }
+
+    // MPI_Group_range_* takes `int ranges[][3]`.  A real array of int[3] elements keeps every
+    // access an access to a genuine int[3] object; a flat vector plus a cast would alias an
+    // incompatible type.  The deleter makes the allocation RAII-safe.
+    struct triple_deleter {
+      void operator()(int (*p)[3]) const noexcept {
+        delete[] p;
+      }
+    };
+
+    using triple_array = std::unique_ptr<int[3], triple_deleter>;
+
+    [[nodiscard]] inline triple_array make_triples(std::span<const rank_range> ranges) {
+      if (ranges.empty())
+        return {};
+      triple_array triples{new int[ranges.size()][3]};
+      for (std::size_t i = 0; i < ranges.size(); ++i) {
+        triples.get()[i][0] = ranges[i].first;
+        triples.get()[i][1] = ranges[i].last;
+        triples.get()[i][2] = ranges[i].stride;
+      }
+      return triples;
     }
 
   }  // namespace detail
@@ -241,7 +332,10 @@ namespace mp1 {
     return detail::group_factory::make(result);
   }
 
-  [[nodiscard]] inline group group_incl(const group& g, const std::vector<int>& ranks) {
+  /// MPI_Group_incl. Local; returns an owning group.  `ranks` is a contiguous rank range
+  /// (std::array, std::vector, C array or std::span); every rank must be valid and distinct and
+  /// is validated before the MPI call (MPI 4.1 §7.3.2).  An empty span yields MPI_GROUP_EMPTY.
+  [[nodiscard]] inline group group_incl(const group& g, std::span<const int> ranks) {
     if (not g.is_valid())
       throw_invalid("mp1::group_incl", "invalid group");
     detail::require_mpi("mp1::group_incl");
@@ -263,7 +357,10 @@ namespace mp1 {
     return detail::group_factory::make(result);
   }
 
-  [[nodiscard]] inline group group_excl(const group& g, const std::vector<int>& ranks) {
+  /// MPI_Group_excl. Local; returns an owning group.  `ranks` is a contiguous rank range and
+  /// every rank must be valid and distinct (MPI 4.1 §7.3.2); an empty span returns a group
+  /// identical to g.
+  [[nodiscard]] inline group group_excl(const group& g, std::span<const int> ranks) {
     if (not g.is_valid())
       throw_invalid("mp1::group_excl", "invalid group");
     detail::require_mpi("mp1::group_excl");
@@ -282,6 +379,46 @@ namespace mp1 {
     MPI_Group result{MPI_GROUP_NULL};
     detail::check_mpi(MPI_Group_excl(g.native_handle(), count, data, &result),
                       "MPI_Group_excl");
+    return detail::group_factory::make(result);
+  }
+
+  /// MPI_Group_range_incl. Local; returns an owning group.
+  ///
+  /// `ranges` is a contiguous range of rank_range triplets (std::array, std::vector or
+  /// std::span).  mp1 validates stride, direction and the computed endpoints locally and does
+  /// not enumerate the progression; duplicate/overlapping ranges are an MPI-erroneous program
+  /// (MPI 4.1 §7.3.2) that is not diagnosed locally.  An empty span yields MPI_GROUP_EMPTY.
+  [[nodiscard]] inline group group_range_incl(const group& g,
+                                              std::span<const rank_range> ranges) {
+    if (not g.is_valid())
+      throw_invalid("mp1::group_range_incl", "invalid group");
+    detail::require_mpi("mp1::group_range_incl");
+    const int count = static_cast<int>(detail::group_range_count(ranges, "group_range_incl"));
+    detail::require_valid_ranges(g, ranges, "mp1::group_range_incl");
+    const detail::triple_array triples = detail::make_triples(ranges);
+    int dummy[3]{};
+    int (*native_ranges)[3] = triples ? triples.get() : &dummy;
+    MPI_Group result{MPI_GROUP_NULL};
+    detail::check_mpi(MPI_Group_range_incl(g.native_handle(), count, native_ranges, &result),
+                      "MPI_Group_range_incl");
+    return detail::group_factory::make(result);
+  }
+
+  /// MPI_Group_range_excl. Local; returns an owning group.  The validation and no-enumeration
+  /// contract are those of group_range_incl; an empty span returns a group identical to g.
+  [[nodiscard]] inline group group_range_excl(const group& g,
+                                              std::span<const rank_range> ranges) {
+    if (not g.is_valid())
+      throw_invalid("mp1::group_range_excl", "invalid group");
+    detail::require_mpi("mp1::group_range_excl");
+    const int count = static_cast<int>(detail::group_range_count(ranges, "group_range_excl"));
+    detail::require_valid_ranges(g, ranges, "mp1::group_range_excl");
+    const detail::triple_array triples = detail::make_triples(ranges);
+    int dummy[3]{};
+    int (*native_ranges)[3] = triples ? triples.get() : &dummy;
+    MPI_Group result{MPI_GROUP_NULL};
+    detail::check_mpi(MPI_Group_range_excl(g.native_handle(), count, native_ranges, &result),
+                      "MPI_Group_range_excl");
     return detail::group_factory::make(result);
   }
 

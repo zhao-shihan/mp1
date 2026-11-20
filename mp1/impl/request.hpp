@@ -64,27 +64,33 @@ namespace mp1 {
   ///                                         active --wait/test--> completed
   ///                                            |                   |
   ///                                   payload finish       persistent: inactive
-  ///                                            |            non-persistent: freed
+  ///                                            |            non-persistent: freed, or
+  ///                                            |            result_pending when the payload
+  ///                                            |            retains a result (idup)
   ///                                            v
   ///                       completing (private interval between the MPI return and the commit)
   ///
+  ///   result_pending --take_communicator()--> freed (result transferred)
   ///   any --release()/move-from--> freed/moved_from
   ///   completion error with unknown handle state --abandon--> broken (null handle)
   ///   persistent payload completion threw --broken (valid handle, payload lost)
   ///
   /// "completing" and "completed" are transition states: no public function observes a slot in
   /// them after the completion transaction returns. "freed" means the request owns no MPI
-  /// request handle (default, released, completed non-persistent). "broken" is terminal:
-  /// start()/cancel() throw, wait()/test()/get_status() return the empty status without MPI,
-  /// only release()/destruction are usable.
+  /// request handle (default, released, completed non-persistent). "result_pending" is a
+  /// completed request that owns no MPI_Request handle but retains a result in its payload
+  /// (today only MPI_Comm_idup); has_result() is the result query and take_communicator() is
+  /// the transfer. "broken" is terminal: start()/cancel() throw, wait()/test()/get_status()
+  /// return the empty status without MPI, only release()/destruction are usable.
   enum class request_state : unsigned char {
-    inactive,    ///< valid persistent handle, no operation in flight
-    active,      ///< operation in flight
-    completing,  ///< private: MPI has returned, commit is in progress
-    completed,   ///< private: commit done, payload finish pending
-    freed,       ///< no wrapped MPI_Request handle
-    broken,      ///< terminal unusable state (payload lost or handle state unknown)
-    moved_from   ///< source of a move: empty, with no metadata retained
+    inactive,       ///< valid persistent handle, no operation in flight
+    active,         ///< operation in flight
+    completing,     ///< private: MPI has returned, commit is in progress
+    completed,      ///< private: commit done, payload finish pending
+    freed,          ///< no wrapped MPI_Request handle
+    broken,         ///< terminal unusable state (payload lost or handle state unknown)
+    moved_from,     ///< source of a move: empty, with no metadata retained
+    result_pending  ///< completed; no MPI_Request handle, but the payload retains a result
   };
 
   namespace detail {
@@ -105,9 +111,10 @@ namespace mp1 {
   /// # State and kernel
   ///
   /// A request is exactly one of: freed (null/default/released/completed non-persistent),
-  /// inactive persistent, active, completing/completed (private transition states), broken or
-  /// moved-from. kind(), teardown_policy(), state(), drop_would_block(), cancelable(),
-  /// is_broken() and native_handle() expose the state machine without an MPI call.
+  /// inactive persistent, active, completing/completed (private transition states),
+  /// result_pending (completed with an owned result), broken or moved-from. kind(),
+  /// teardown_policy(), state(), has_result(), drop_would_block(), cancelable(), is_broken()
+  /// and native_handle() expose the state machine without an MPI call.
   ///
   /// # Drop table (destructor, move-assignment target, vector::erase)
   ///
@@ -123,6 +130,7 @@ namespace mp1 {
   /// | active send-recv (`isendrecv*`)     | MPI_Wait                          | none           | can be unbounded |
   /// | stale active==false, non-null handle| none; abandon (leak)              | abandon/leak   | no     |
   /// | MPI inactive                        | none; abandon and count           | destroy        | no     |
+  /// | result_pending (idup result owned)  | MPI_Comm_free                     | result disposed | yes (collective) |
   ///
   /// Data-carrying requests complete ctx they wait for: a staged receive or reduction is
   /// delivered by the destructor, not discarded. A send is freed, never waited, and its owned
@@ -131,6 +139,17 @@ namespace mp1 {
   /// no-MPI-call escape: the operation continues, the completion becomes unobservable, and the
   /// handle/payload are leaked. Destructors are noexcept; a destructor can block (see
   /// drop_would_block()).
+  ///
+  /// # Result ownership (MPI_Comm_idup)
+  ///
+  /// A request produced by communicator::idup/idup_with_info has a result: after a successful
+  /// completion the request enters request_state::result_pending and owns the new MPI_Comm in
+  /// its payload. is_valid()/operator bool stay handle-only and are false in that state;
+  /// has_result() is the separate result axis. Call take_communicator() (declared in
+  /// communicator.hpp) to move the communicator into an owning mp1::communicator, or destroy
+  /// the request to dispose of it (MPI_Comm_free, collective). A take on a request that has no
+  /// result throws std::invalid_argument; a take before completion throws std::logic_error.
+  /// release() leaks the retained communicator without an MPI call.
   ///
   /// # Native handle
   ///
@@ -206,6 +225,14 @@ namespace mp1 {
     /// \return current state (see the class comment)
     [[nodiscard]] request_state state() const noexcept;
 
+    /// \return true iff state() == result_pending (no MPI call).  This is the result-ownership
+    /// axis, not the handle axis: a result_pending request owns no MPI_Request handle, so
+    /// is_valid()/operator bool are false.  Only requests produced by
+    /// communicator::idup/idup_with_info have a result today; take_communicator() transfers it.
+    [[nodiscard]] bool has_result() const noexcept {
+      return state_ == request_state::result_pending;
+    }
+
     /// \return true if the wrapped MPI request handle is not MPI_REQUEST_NULL
     [[nodiscard]] bool is_valid() const noexcept;
 
@@ -225,8 +252,9 @@ namespace mp1 {
     [[nodiscard]] bool cancelable() const noexcept;
 
     /// \return true if destroying this request may block waiting for an operation to complete
-    /// (active receive/collective/file/RMA/flush/send-recv); false for sends, inactive
-    /// persistent requests and invalid requests
+    /// (active receive/collective/file/RMA/flush/send-recv) or, for a result_pending request,
+    /// disposing of the retained communicator (MPI_Comm_free, collective); false for sends,
+    /// inactive persistent requests and invalid requests
     [[nodiscard]] bool drop_would_block() const noexcept;
 
     /// \return non-owning MPI_Request handle; do not free or wait on it through raw MPI without
@@ -261,7 +289,8 @@ namespace mp1 {
     /// std::invalid_argument for a non-persistent/invalid/released request.
     void start();
 
-    /// No MPI call: drop the handle and payload intentionally (both leaked).
+    /// No MPI call: drop the handle and payload intentionally (both leaked).  A result_pending
+    /// request's retained communicator is leaked and counted as an abandoned handle.
     void release() noexcept;
 
     explicit operator bool() const noexcept {
@@ -567,6 +596,10 @@ namespace mp1 {
   }
 
   inline bool request::drop_would_block() const noexcept {
+    // A result_pending request has no live MPI_Request, but destroying it calls
+    // MPI_Comm_free, which is collective over the duplicate's group and may block.
+    if (state_ == request_state::result_pending)
+      return true;
     if (state_ != request_state::active)
       return false;
     switch (kind_) {
@@ -619,11 +652,19 @@ namespace mp1 {
         return r.payload_ != nullptr;
       }
 
+      static bool retains_result(const request& r) noexcept {
+        return r.payload_ != nullptr && r.payload_->retains_result();
+      }
+
       static bool proc_null(const request& r) noexcept {
         return r.proc_null_;
       }
 
       static request_payload* payload(request& r) noexcept {
+        return r.payload_.get();
+      }
+
+      static request_payload* payload(const request& r) noexcept {
         return r.payload_.get();
       }
 
@@ -748,9 +789,19 @@ namespace mp1 {
       } else if (request_access::persistent(r)) {
         request_access::set_state(r, request_state::inactive);
       } else {
-        request_access::clear_payload(r);
+        // A payload that retains a result stays owned after a successful completion: the
+        // request owns no MPI_Request handle but the caller can transfer the result.  An
+        // error or cancelled completion clears the payload (the idup payload deliberately
+        // never frees a possibly unwritten output slot) and is an ordinary freed request.
+        const bool keep_result =
+            request_access::retains_result(r) and verdict == completion_verdict::success;
         request_access::set_handle(r, MPI_REQUEST_NULL);
-        request_access::set_state(r, request_state::freed);
+        if (keep_result) {
+          request_access::set_state(r, request_state::result_pending);
+        } else {
+          request_access::clear_payload(r);
+          request_access::set_state(r, request_state::freed);
+        }
       }
       return result;
     }
@@ -1038,6 +1089,13 @@ namespace mp1 {
       detail::note_dropped_request();
       detail::note_abandoned_handle();
     }
+    // A completed idup result is a leaked MPI_Comm, not a leaked MPI_Request; count it like
+    // every other abandoned handle.  An active idup request leaks its payload (MPI may still
+    // write the output slot) and the communicator becomes unobservable with it.
+    if (state_ == request_state::result_pending and payload_ != nullptr) {
+      if (payload_->release_comm() != MPI_COMM_NULL)
+        detail::note_abandoned_handle();
+    }
     detail::abandon_forever(payload_.release());
     h_ = MPI_REQUEST_NULL;
     kind_ = request_kind::none;
@@ -1048,6 +1106,19 @@ namespace mp1 {
   }
 
   inline void request::drop() noexcept {
+    // A result_pending request owns no MPI_Request handle; resetting the payload disposes of
+    // the retained communicator (MPI_Comm_free, or abandon + count when MPI is inactive).
+    if (state_ == request_state::result_pending) {
+      payload_.reset();
+      h_ = MPI_REQUEST_NULL;
+      kind_ = request_kind::none;
+      td_ = request_teardown::none;
+      state_ = request_state::freed;
+      persistent_ = false;
+      proc_null_ = false;
+      return;
+    }
+
     if (not is_valid()) {
       payload_.reset();
       kind_ = request_kind::none;

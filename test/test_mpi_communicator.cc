@@ -5,6 +5,7 @@
 
 #include "mp1/mp1.hpp"
 
+#include <array>
 #include <boost/test/unit_test.hpp>
 #include <optional>
 #include <stdexcept>
@@ -120,7 +121,7 @@ BOOST_AUTO_TEST_CASE(owner_factories) {
   }
 
   // create(): collective over comm_world; only the group members receive a handle.
-  auto group_one = mp1::group_incl(mp1::get_group(comm_world), {0});
+  auto group_one = mp1::group_incl(mp1::get_group(comm_world), std::array{0});
   auto created = mp1::communicator::create(comm_world, group_one);
   BOOST_TEST((created.is_valid() == (rank == 0)));
   if (rank == 0)

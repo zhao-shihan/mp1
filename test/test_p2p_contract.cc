@@ -427,9 +427,11 @@ BOOST_AUTO_TEST_CASE(group_contract) {
   BOOST_TEST(mp1::group_intersection(first, rest).size() == 0);
   BOOST_TEST(mp1::group_difference(all, first).size() == size - 1);
 
-  BOOST_TEST(throws_invalid_argument([&all] { (void)mp1::group_incl(all, {-1}); }));
-  BOOST_TEST(throws_invalid_argument([&all, size] { (void)mp1::group_incl(all, {size}); }));
-  BOOST_TEST(throws_invalid_argument([&all, size] { (void)mp1::group_excl(all, {size}); }));
+  BOOST_TEST(throws_invalid_argument([&all] { (void)mp1::group_incl(all, std::array{-1}); }));
+  BOOST_TEST(
+      throws_invalid_argument([&all, size] { (void)mp1::group_incl(all, std::array{size}); }));
+  BOOST_TEST(
+      throws_invalid_argument([&all, size] { (void)mp1::group_excl(all, std::array{size}); }));
 
   mp1::group moved = std::move(all);
   // NOLINTNEXTLINE(bugprone-use-after-move): intentional moved-from state

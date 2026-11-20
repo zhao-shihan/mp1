@@ -1,7 +1,7 @@
-# mp1 1.1.0 API matrix
+# mp1 2.0.0 API matrix
 
 mp1 is a header-only C++20 typed wrapper for the MPI 4.1 World Model. This page
-maps the public typed surface of mp1 1.1.0: which operation families exist,
+maps the public typed surface of mp1 2.0.0: which operation families exist,
 which C++ data spellings each family accepts, which lifetimes are covered, and
 where the typed surface stops. It is a coverage map, not a signature reference:
 exact declarations, parameter order, defaults and constraints are in the
@@ -33,8 +33,8 @@ move-assignment special member is the exception). "Unique" applies one more filt
 declaration and its out-of-line definition, modulo a leading `inline`) are
 counted once.
 
-The scanner measures **620** public declarations in the sixteen family headers
-and **641** across all eighteen (unique signatures: **586** and **607**). This
+The scanner measures **628** public declarations in the sixteen family headers
+and **649** across all eighteen (unique signatures: **594** and **615**). This
 is the declaration count; it is not a feature count, because one constrained
 template, alias, option-bag member or family-wide declaration can serve several
 operation forms. The per-family operation coverage is the rest of this
@@ -47,21 +47,21 @@ document.
 | `file.hpp` | 129 | 129 | 5 lifecycle + 7 control + 15 metadata/positioning + 6 atomicity/extent/handler + 96 data access |
 | `rma.hpp` | 33 | 33 | 33 function declarations; `lock_type` is an enum and is not counted |
 | `layout.hpp` | 38 | 38 | zero-size layout is `contiguous(0)`; the `empty()` factory is removed |
-| `request.hpp` | 51 | 49 | owner/state machine, eleven named factories and the completion functions |
-| `communicator.hpp` | 58 | 46 | owner/view lifecycle, factories, the cached `tag_ub` accessors and free functions |
+| `request.hpp` | 52 | 50 | owner/state machine, eleven named factories, `has_result` and the completion functions |
+| `communicator.hpp` | 63 | 51 | owner/view lifecycle, factories (including `idup`/`idup_with_info`, the from-group factories and `take_communicator`), the cached `tag_ub` accessors and free functions |
 | `window.hpp` | 51 | 36 | owner/view lifecycle, factories, metadata and synchronization |
 | `datatype.hpp` | 29 | 24 | traits/helpers; the six public macros are not declarations |
 | `operator.hpp` | 6 | 6 | `predefined_op<T>`'s constructors and accessors; the three mp1 functors (`max`, `min`, `logical_xor`), `commutative_op` and `op_traits<F>` are class/trait surface and are listed in §7.3 |
 | `info.hpp` | 15 | 15 | |
-| `group.hpp` | 17 | 17 | |
+| `group.hpp` | 19 | 19 | `rank_range` is an aggregate, not a counted declaration |
 | `status.hpp` | 10 | 10 | |
 | `environment.hpp` | 28 | 28 | |
 | `spawn.hpp` | 9 | 9 | |
 | `buffer.hpp` | 6 | 6 | |
-| **Sixteen-header total** | **620** | **586** | |
+| **Sixteen-header total** | **628** | **594** | |
 | `error.hpp` | 14 | 14 | |
 | `vocabulary.hpp` | 7 | 7 | |
-| **All-header total** | **641** | **607** | |
+| **All-header total** | **649** | **615** | |
 
 `vocabulary.hpp` provides `count_t`, `capacity`, `region<T>`, `blocks`,
 `span_from` and `empty_data`; `status.hpp` also provides the `tag`/`any_tag`/
@@ -77,15 +77,15 @@ families × 3 lifetimes; 5 blocking and 4 nonblocking/persistent receive
 policies; 42 RMA origin/result/target shapes; 129 file declarations, of which
 96 are data access; and the per-family descriptors in §§2–7.
 
-The complete verification suite is **292** non-nightly CTest entries in the
-default configuration (**293** with `MP1_TEST_EXTRA_RANKS=ON`, which adds the
-5-rank persistent-collective entry), **96** of which are compile-fail entries
-(**94** contract probes + 2 harness self-checks), plus **64** compile-pass
-controls and **9** compile-all API sources. The tree has **90** unit-test
-sources with **509** Boost test cases; the full build compiles **279** C++20
-translation units and has **416** build edges when tests, examples and perf are
+The complete verification suite is **305** non-nightly CTest entries in the
+default configuration (**306** with `MP1_TEST_EXTRA_RANKS=ON`, which adds the
+5-rank persistent-collective entry), **104** of which are compile-fail entries
+(**102** contract probes + 2 harness self-checks), plus **66** compile-pass
+controls and **9** compile-all API sources. The tree has **93** unit-test
+sources with **532** Boost test cases; the full build compiles **285** C++20
+translation units and has **425** build edges when tests, examples and perf are
 enabled (the release build enables `MP1_BUILD_PERF`, whose `perf_calls` gate is
-one of the 292 entries); the wrap-coverage gate covers **177** MPI symbols
+one of the 305 entries); the wrap-coverage gate covers **177** MPI symbols
 across 34 implementation files.
 
 ## How to read this matrix
@@ -175,7 +175,7 @@ Common notation:
 | `file` | Owner-only, no view; member data access over one shared state. | Move-only. | Finish split, then collective close; may block. | `release()` |
 | `group` | Owner-only, move-only, no view. | Move-only. | `MPI_Group_free` (`MPI_GROUP_EMPTY` not owned). | None public |
 | `info` | Copyable owner. | Copy duplicates (`MPI_Info_dup`); move steals. | `MPI_Info_free`; always available. | None |
-| `request` | Move-only owner. | Move-only. | State-machine drop policy; may wait/cancel. | `release()` |
+| `request` | Move-only owner; a completed `idup` request owns its `MPI_Comm` result until `take_communicator`. | Move-only. | State-machine drop policy; may wait/cancel, or free a `result_pending` duplicate. | `release()` |
 | `message` | Move-only owner of a matched message. | Move-only. | Discards a still-owned message; `noexcept`. | `release()` |
 | `layout<T>` | Copyable owner of one committed datatype. | Copy duplicates; move transfers. | `MPI_Type_free`. | None; `native_handle()` borrows |
 
@@ -192,6 +192,12 @@ Common notation:
   transfers the `MPI_File` but may call `MPI_Type_free` once when an active split
   owns a duplicated region layout. `layout` has no public release;
   `native_handle()` borrows the committed datatype.
+- A `request` exposes two independent ownership axes: `is_valid()`/`operator
+  bool` report whether a live `MPI_Request` handle is held (a
+  `result_pending` idup request has none, so both are false), while
+  `state()`/`has_result()` report the retained-result axis. `take_communicator`
+  is the only transfer; destroying a `result_pending` request disposes of the
+  duplicate with a collective `MPI_Comm_free`.
 - An owner's move assignment over a live target is a teardown with the same
   policy as destruction; it may be collective and/or blocking.
 - `info` is the one handle owner whose operations are always available (MPI
@@ -216,6 +222,13 @@ raw `int`), while `status::source()` remains `int`.
 | `mp1::any_tag` | `tag` | `MPI_ANY_TAG`; receive/probe accepted, send/factory rejected. |
 | `mp1::tag_ub_min` | `tag` | 32767; MPI's guaranteed inclusive minimum `MPI_TAG_UB` (MPI 4.1 §3.2.3). |
 | `mp1::tag_ub(c)` / `c.tag_ub()` | `int` | The communicator's cached inclusive `MPI_TAG_UB`; no MPI call. |
+
+`stringtag` is a distinct vocabulary: `communicator::create_from_group` and
+`communicator::intercomm_create_from_groups` take a `std::string_view`, not
+`mp1::tag`, and there is no conversion between them. The view must contain no
+embedded NUL and be shorter than `MPI_MAX_STRINGTAG_LEN` (the macro includes
+the terminating NUL); an empty string is legal. It is borrowed only for the
+blocking call, and every participating process must pass the same value.
 
 Send tags must satisfy `0 <= value <= tag_ub(c)`; receive and probe tags also
 accept `any_tag`. The `create_group` and `intercomm_create` tags use the same
@@ -403,7 +416,7 @@ no in-place form.
 | typed | `std::span<const layout<T>> layouts` + `std::span<const count_t> displacements` | Blocking borrows. Nonblocking/persistent duplicate the layouts they stage. |
 
 The predecessor's layout-container and byte-displacement types are not part of
-1.0. The dense descriptor is `blocks`; the typed descriptor is the two spans.
+the typed surface. The dense descriptor is `blocks`; the typed descriptor is the two spans.
 Dense `blocks` always requires **both** spans, each with the peer count; an
 empty displacement span is not the all-zero shortcut for the dense form. A
 typed displacement span defaults to empty (all-zero element displacements)
@@ -720,12 +733,12 @@ refuses while a wrapper-owned request is outstanding.
 | Area | Measured declarations | Surface |
 |---|---:|---|
 | Environment | 28 | `init`/`finalize` forms, `finalize_at_exit`, `initialized`, `finalized`, `available`, `get_version`, `get_library_version`, `get_hw_resource_info`, `query_thread`, `provided`, `is_thread_main`, `processor_name`, `wtime`, `wtick`, `wtime_is_global`, `buffer_attach`/`buffer_detach`, `bsend_buffer`, `environment`, `threading_mode` |
-| Communicator | 58 | owner/view lifecycle, `dup`, `dup_with_info`, `split`, `split_type`, `create`, `create_group`, `merge`, `intercomm_create`, `adopt`, `adopt_connected`, `free`, `disconnect`, `release`, `view`, `policy`, `compare`, `abort`, `get_info`/`set_info`, the cached `tag_ub` accessors and free `tag_ub(c)`, free `get_group(c)`, `remote_group`, `remote_size`, `is_inter`, `parent`, `comm_world`, `comm_self`, `comm_null`, `set_error_handler`/`get_error_handler`, `install_recoverable_errors`; `abort` calls `MPI_Abort`; a successful return is passed through and a non-success return throws `mpi_error` |
-| Group | 17 | owner lifecycle, `empty`, `is_empty`, `is_valid`, `size`, `rank`, `translate`, `compare`, `native_handle`, `get_group`, `group_union`, `group_intersection`, `group_difference`, `group_incl`, `group_excl` |
+| Communicator | 63 | owner/view lifecycle, `dup`, `dup_with_info`, `idup`, `idup_with_info`, `split`, `split_type`, `create`, `create_group`, `create_from_group`, `merge`, `intercomm_create`, `intercomm_create_from_groups`, `adopt`, `adopt_connected`, `take_communicator`, `free`, `disconnect`, `release`, `view`, `policy`, `compare`, `abort`, `get_info`/`set_info`, the cached `tag_ub` accessors and free `tag_ub(c)`, free `get_group(c)`, `remote_group`, `remote_size`, `is_inter`, `parent`, `comm_world`, `comm_self`, `comm_null`, `set_error_handler`/`get_error_handler`, `install_recoverable_errors`; `abort` calls `MPI_Abort`; a successful return is passed through and a non-success return throws `mpi_error` |
+| Group | 19 | owner lifecycle, `empty`, `is_empty`, `is_valid`, `size`, `rank`, `translate`, `compare`, `native_handle`, `get_group`, `group_union`, `group_intersection`, `group_difference`, `group_incl`/`group_excl` over `std::span<const int>`, `rank_range`, `group_range_incl`, `group_range_excl` |
 | Info | 15 | owner lifecycle, `create`, `create_env`, `set`, `value`, `remove`, `size`, `key`, `is_valid`, `empty`, `native_handle` |
 | Status | 10 | lifecycle, `kind`, `source` (`int`), `tag` (`mp1::tag`), `error`, `is_cancelled`, `get_count<T>()`/`get_count<T>(layout<T>)`, `get_elements<T>()`/`get_elements<T>(layout<T>)`, `native_handle` |
 | Error | 14 | `context`, `mpi_error` constructor/accessors, `fail`, `require`, `throw_invalid`, `error_handler`, `set_error_handler`/`get_error_handler`, `install_recoverable_errors` |
-| Request | 51 | owner/state machine, eleven named factories (`from_send`, `from_recv`, `from_persistent_send`, `from_persistent_recv`, `from_collective`, `from_persistent_collective`, `from_file`, `from_matched_recv`, `from_sendrecv`, `from_flush`, `from_rma`), `wait`, `test`, `get_status`, `cancel`, `start`, `release`, and the free `wait_all`/`test_all`/`wait_any`/`test_any`/`wait_some`/`test_some`/`get_status_*`/`start_all` functions over `std::span<request>` |
+| Request | 52 | owner/state machine, `has_result`, eleven named factories (`from_send`, `from_recv`, `from_persistent_send`, `from_persistent_recv`, `from_collective`, `from_persistent_collective`, `from_file`, `from_matched_recv`, `from_sendrecv`, `from_flush`, `from_rma`), `wait`, `test`, `get_status`, `cancel`, `start`, `release`, and the free `wait_all`/`test_all`/`wait_any`/`test_any`/`wait_some`/`test_some`/`get_status_*`/`start_all` functions over `std::span<request>` |
 | Spawn | 9 | `spawn`, `spawn_with_errcodes`, `spawn_multiple`, `spawn_multiple_with_errcodes`, plus `spawn_multiple_options::{add,size,commands,maxprocs,infos}` |
 
 `error.hpp` is outside the 16-header inventory but part of the public surface.
@@ -760,6 +773,22 @@ function-level error that is not `MPI_ERR_IN_STATUS` is separate: `wait_all`
 and `wait_some`/`test_some` abandon the active slots and leave inactive
 persistent slots valid, while `test_all` with `flag == false` leaves every slot
 untouched (a failure after `flag == true` abandons the active slots).
+
+A successful `communicator::idup`/`idup_with_info` slot is the one
+result-producing completion: it enters `request_state::result_pending`, holds
+no live `MPI_Request` handle, and keeps the new `MPI_Comm` in its payload.
+`request::has_result()` reports that state (no MPI call), and
+`mp1::take_communicator(request&)` transfers the duplicate into an owning
+`communicator`. The single and bulk completion signatures are unchanged and
+return their normal statuses; a `result_pending` slot is inactive for every
+bulk function (empty status in `wait_all`/`test_all`, omitted or
+`MPI_UNDEFINED` in the any/some forms), and it cannot be in the PENDING state.
+`is_valid()`/`operator bool` remain handle-only and are false in
+`result_pending`; the result axis is separate. Destroying the request without
+taking the result performs `MPI_Comm_free` (collective, so
+`drop_would_block()` is true); `release()` leaks it without an MPI call. No new
+`request_kind` and no new request factory exist: the idup request is
+`request_kind::collective`.
 
 ### 6.2 Status provenance
 
@@ -855,7 +884,7 @@ adoption escape; there is no general raw-datatype bridge. The handle must be a
 derived datatype (a predefined named, F90 or value-index handle throws
 `std::invalid_argument` before any commit or free), `elements` is the
 application `size()` and never an MPI count, and the type map must be an
-occurrence of `T` (caller precondition, not validated in 1.0). The facts
+occurrence of `T` (caller precondition, not validated). The facts
 argument may only assert the three structural predicates MPI cannot query.
 Ownership transfers on entry; on success the layout frees the handle exactly
 once, while a pre-adoption rejection leaves ownership with the caller. The
@@ -928,10 +957,14 @@ values are `constexpr int` mirrors of the corresponding MPI integer constants.
 | `MPI_MAXLOC`/`MPI_MINLOC` typed reductions | No `MPI_2*` pair model; raw `MPI_Op` only for non-RMA reductions. |
 | RMA container data forms | Origin/result are `std::span`/`region`; there is no container overload. |
 | Persistent container data buffers | Fixed buffers only; use a `std::span` or `region`. |
-| File `get_view`, user datareps, raw heterogeneous `set_view` | Outside 1.0. |
+| File `get_view`, user datareps, raw heterogeneous `set_view` | Not implemented. |
 | File free data-access wrappers | Not present in 0.5.0 or 1.0; 0.5.0 file access was already member-only. |
 | Predecessor layout-container and displacement types | Not in 1.0; use `region<T>`, `std::span<const layout<T>>` and `blocks`. |
 | Predecessor request pools | Not in 1.0; the batch functions take `std::span<request>`. |
 | MPI Sessions, partitioned point-to-point | Not wrapped. |
 | Attributes/keyvals, object naming, user error-handler callbacks | Not wrapped. |
 | DPM connect/accept/join, generalized requests, MPI_T | Not wrapped. |
+| Owning `MPI_Errhandler` bridge / user error-handler callbacks | Not wrapped. `mp1::error_handler` models the three predefined handlers only; a custom handler is raw MPI or `MPI_Comm_set_errhandler` on `native_handle()` after creation. `MPI_ERRHANDLER_NULL` is not a valid handler (MPI 4.1 §9.3.1). |
+| From-group non-membership | MPI-erroneous and deliberately not diagnosed locally; MPI is the authority. Cross-rank agreement (same group/leader/stringtag, disjoint groups) is the application's obligation. |
+| Duplicate/overlapping `rank_range` triplets | Not expanded or diagnosed locally; `group_range_incl`/`group_range_excl` validate stride, direction and endpoints only (MPI 4.1 §7.3.2 makes distinct computed ranks an erroneous-program obligation). |
+| `result_pending` destruction during unwinding | The request destructor performs the collective `MPI_Comm_free`; take completed idup results before rethrowing, or use `release()` and accept the documented leak. |

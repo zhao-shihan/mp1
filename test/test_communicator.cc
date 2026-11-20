@@ -4,6 +4,7 @@
 
 #include "mp1/mp1.hpp"
 
+#include <array>
 #include <boost/test/unit_test.hpp>
 #include <stdexcept>
 
@@ -114,7 +115,7 @@ bool communicator_comm_world_create_group_test() {
   const auto comm_world{mp1::comm_world()};
   const int rank{comm_world.rank()};
   auto group_world = mp1::get_group(comm_world);
-  auto group_one = mp1::group_incl(group_world, {0});
+  auto group_one = mp1::group_incl(group_world, std::array{0});
   // create_group is collective over the group only: non-members must not enter it.
   mp1::communicator comm_new;
   if (rank == 0)

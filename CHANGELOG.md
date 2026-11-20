@@ -1,5 +1,51 @@
 # Changelog
 
+## 2.0.0 — 2026-11-20
+
+Version 2.0.0 adds the advanced communicator and group creation surface and the
+`result_pending` request result model. It contains two deliberate source
+breaks: `group_incl`/`group_excl` now take `std::span<const int>`, and
+`request_state` gains `result_pending` (an exhaustive `switch` may need a new
+case). The rest of the 1.0 public entry points remain.
+
+### Added
+
+- `communicator::idup` and `communicator::idup_with_info` (nonblocking
+  duplicates, `MPI_Comm_idup*`), `take_communicator(request&)`, the
+  `request_state::result_pending` state and `request::has_result()`.
+  `wait`/`test` and every bulk completion signature are unchanged; a completed
+  idup request owns its duplicate until it is taken or destroyed. There is no
+  new `request_kind`, no request factory and no new header.
+- `communicator::create_from_group` (`MPI_Comm_create_from_group`) and
+  `communicator::intercomm_create_from_groups`
+  (`MPI_Intercomm_create_from_groups`), with MPI 4.1 argument order. Both
+  `info` and `mp1::error_handler` are required; `MPI_ERRHANDLER_NULL` is the
+  null handle, not a valid handler (MPI 4.1 §9.3.1).
+- `mp1::rank_range`, `group_range_incl` and `group_range_excl`
+  (`MPI_Group_range_*`), validated locally without expanding the progression.
+
+### Changed
+
+- `group_incl`/`group_excl` take `std::span<const int>` instead of
+  `const std::vector<int>&`. This is source-breaking: `group_incl(g, {0})` no
+  longer converts to a span; spell the ranks as `std::array{0}` or
+  `std::vector{0}`. No `initializer_list` overload is added.
+- `mp1::error_handler` remains the three predefined handlers. There is no
+  owning error-handler bridge: a custom handler uses raw MPI or
+  `MPI_Comm_set_errhandler` after creation. `idup` inherits the source
+  communicator's handler like `MPI_Comm_dup`; the from-group factories require
+  an explicit one.
+- Non-membership of either from-group call is MPI-erroneous and is not
+  diagnosed locally; cross-rank agreement (same group/leader/stringtag,
+  disjoint groups) is the application's obligation. `remote_group`/
+  `remote_leader` stay leader-only, with Intel MPI 2021.19's non-leader
+  `MPI_GROUP_NULL` rejection documented as a provider caveat in
+  [COMPATIBILITY.md](COMPATIBILITY.md).
+- `request_state` gains `result_pending`; an exhaustive `switch` may need a
+  new case. `request_kind` is unchanged, and `is_valid()`/`operator bool`
+  remain handle-only (a `result_pending` request is not valid; use
+  `has_result()`).
+
 ## 1.1.0 — 2026-11-18
 
 Version 1.1.0 adds transparent reduction-functor spellings and aligns the

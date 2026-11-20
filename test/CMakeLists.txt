@@ -263,6 +263,11 @@ foreach(source IN LISTS MP1_TEST_SOURCES)
     # One process: probes before init and after finalize, so a separate main is required.
     mp1_add_test(NAME "${name}" SOURCE "${source}"
       KIND scenario RANKS "1" LABELS environment)
+  elseif(name STREQUAL "test_idup_finalize")
+    # One process: finalizes MPI while an idup result/request is alive, so a separate main is
+    # required (a shared-main unit test cannot finalize mid-suite).
+    mp1_add_test(NAME "${name}" SOURCE "${source}"
+      KIND scenario RANKS "1" LABELS request)
   elseif(name STREQUAL "test_rma_shared")
     # Shared-memory RMA needs one multi-process shared-memory domain.  The
     # scenario returns 77 (CTest skip) when the provider or launcher does not
@@ -466,7 +471,15 @@ set(MP1_COMPILE_FAIL_PROBES
   "p2p_recv_rvalue_container@test/compile_fail/p2p_recv_rvalue_container.cc@no matching function for call to .*recv.*constraints not satisfied@test/compile_pass/p2p_vector_recv.cc"
   "layout_builder_braced_init@test/compile_fail/layout_builder_braced_init.cc@(no matching (function|constructor)|no viable constructor).*(indexed_parameter|hindexed_parameter|indexed_block_parameter|hindexed_block_parameter|subarray_parameter)@test/compile_pass/layout_builder_named_ranges.cc"
   "layout_empty_removed@test/compile_fail/layout_empty_removed.cc@(empty.*is not a member of.*mp1::layout|no member named .empty. in .*mp1::layout)@test/compile_pass/layout_zero_control.cc"
-  "throwing_reduction_functor@test/compile_fail/throwing_reduction_functor.cc@mp1: a reduction functor used on the callback path must be nothrow-invocable@test/compile_pass/reduction_functor_noexcept.cc")
+  "throwing_reduction_functor@test/compile_fail/throwing_reduction_functor.cc@mp1: a reduction functor used on the callback path must be nothrow-invocable@test/compile_pass/reduction_functor_noexcept.cc"
+  "take_communicator_const@test/compile_fail/take_communicator_const.cc@(binding reference of type|no matching function).*take_communicator|discards qualifiers@test/compile_pass/communicator_advanced_forms.cc"
+  "create_from_group_stringtag_wrong_type@test/compile_fail/create_from_group_stringtag_wrong_type.cc@(cannot convert|no matching function).*string_view|no matching function for call to .*create_from_group@test/compile_pass/communicator_advanced_forms.cc"
+  "create_from_group_missing_info@test/compile_fail/create_from_group_missing_info.cc@no matching function for call to .*create_from_group@test/compile_pass/communicator_advanced_forms.cc"
+  "create_from_group_missing_handler@test/compile_fail/create_from_group_missing_handler.cc@no matching function for call to .*create_from_group@test/compile_pass/communicator_advanced_forms.cc"
+  "create_from_group_null_errhandler@test/compile_fail/create_from_group_null_errhandler.cc@(cannot convert|no matching function).*(MPI_Errhandler|create_from_group)@test/compile_pass/communicator_advanced_forms.cc"
+  "group_incl_braced_init@test/compile_fail/group_incl_braced_init.cc@(could not convert|no matching function).*group_incl@test/compile_pass/group_span_forms.cc"
+  "group_range_wrong_element@test/compile_fail/group_range_wrong_element.cc@(could not convert|no matching function).*group_range_incl@test/compile_pass/group_span_forms.cc"
+  "free_idup_removed@test/compile_fail/free_idup_removed.cc@(is not a member of|no member named).*(mp1|idup)@test/compile_pass/communicator_advanced_forms.cc")
 foreach(probe IN LISTS MP1_COMPILE_FAIL_PROBES)
   string(REPLACE "@" ";" fields "${probe}")
   list(GET fields 0 name)

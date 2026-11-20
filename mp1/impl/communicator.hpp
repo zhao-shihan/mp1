@@ -6,10 +6,14 @@
 #include "mp1/impl/detail/mpi_call.hpp"
 #include "mp1/impl/group.hpp"
 #include "mp1/impl/info.hpp"
+#include "mp1/impl/request.hpp"
 #include "mp1/impl/status.hpp"
 
 #include <atomic>
+#include <memory>
 #include <stdexcept>
+#include <string_view>
+#include <utility>
 
 
 namespace mp1 {
@@ -31,6 +35,77 @@ namespace mp1 {
   namespace detail {
     void require_valid(const mpi_communicator& c, const context& ctx);
     std::atomic<bool>& parent_adopted() noexcept;
+
+    struct comm_factory;
+
+    /// Validate an MPI stringtag operation tag (MPI 4.1 §7.4, MPI_MAX_STRINGTAG_LEN includes
+    /// the terminating NUL) and return a stable C string for the blocking call.  An empty view
+    /// is legal and is passed as "".  An embedded NUL is rejected because passing data() would
+    /// silently truncate the tag.
+    [[nodiscard]] inline const char* stringtag_text(
+        std::string_view stringtag, const context& ctx,
+        std::source_location where = std::source_location::current()) {
+      if (stringtag.find('\0') != std::string_view::npos) {
+        throw_invalid(ctx.operation, "stringtag contains an embedded NUL byte", where);
+      }
+      if (stringtag.size() >= static_cast<std::size_t>(MPI_MAX_STRINGTAG_LEN)) {
+        detail::fail_as<std::invalid_argument>(
+            ctx, where,
+            "stringtag length {} is not less than the MPI_MAX_STRINGTAG_LEN "
+            "limit ({})",
+            stringtag.size(), MPI_MAX_STRINGTAG_LEN);
+      }
+      return stringtag.empty() ? "" : stringtag.data();
+    }
+
+    /// Payload of an MPI_Comm_idup request.  The output MPI_Comm lives in a heap cell whose
+    /// address is stable across request moves and release(); MPI writes it asynchronously up to
+    /// completion.  complete() only records the completion; the owning communicator view is
+    /// built later by take_communicator(), outside the noexcept completion transaction.
+    class idup_payload final : public request_payload {
+    public:
+      idup_payload() : slot_{std::make_unique<MPI_Comm>(MPI_COMM_NULL)} {
+      }
+
+      [[nodiscard]] MPI_Comm* slot() noexcept {
+        return slot_.get();
+      }
+
+      void complete(const status&) noexcept override {
+        completed_ = true;
+      }
+
+      [[nodiscard]] bool retains_result() const noexcept override {
+        return true;
+      }
+
+      /// Transfer the completed duplicate.  Must not be called before complete(); returns
+      /// MPI_COMM_NULL when the output was null or the payload was never completed.
+      [[nodiscard]] MPI_Comm release_comm() noexcept override {
+        if (not completed_)
+          return MPI_COMM_NULL;
+        return std::exchange(*slot_, MPI_COMM_NULL);
+      }
+
+      ~idup_payload() noexcept override {
+        if (slot_ == nullptr or *slot_ == MPI_COMM_NULL)
+          return;
+        // A result_pending request's destructor disposes of the duplicate: MPI_Comm_free is
+        // collective and can block.  After finalize, or when the slot may not have been
+        // written by a completed operation, abandon and count it instead.
+        if (not completed_ or not mpi_active()) {
+          note_abandoned_handle();
+          return;
+        }
+        MPI_Comm handle = std::exchange(*slot_, MPI_COMM_NULL);
+        if (MPI_Comm_free(&handle) != MPI_SUCCESS)
+          note_abandoned_handle();
+      }
+
+    private:
+      std::unique_ptr<MPI_Comm> slot_;
+      bool completed_{false};
+    };
   }  // namespace detail
 
   /// The owning parent intercommunicator factory.
@@ -437,6 +512,41 @@ namespace mp1 {
       return take_result(result, release_policy::free);
     }
 
+    /// MPI_Comm_idup.  Nonblocking duplicate: the returned request is a nonblocking collective
+    /// request (request_kind::collective) and the duplicate is available only after
+    /// wait/test/bulk completion.  On success the request enters
+    /// request_state::result_pending and owns the MPI_Comm; transfer it with
+    /// take_communicator(request&), or destroy the request to free it.  The source
+    /// communicator must stay valid until the request completes, and every rank must issue the
+    /// idup calls in the same order on the same source context.  The duplicate inherits the
+    /// source error handler, exactly like MPI_Comm_dup (MPI 4.1 §7.4).
+    [[nodiscard]] static request idup(const mpi_communicator& other) {
+      require_factory_operand(other, "mp1::communicator::idup");
+      auto payload = std::make_unique<detail::idup_payload>();
+      MPI_Request handle{MPI_REQUEST_NULL};
+      detail::check_mpi(MPI_Comm_idup(other.native_handle(), payload->slot(), &handle),
+                        "MPI_Comm_idup");
+      request result = request::from_collective(handle);
+      detail::attach_payload(result, std::move(payload));
+      return result;
+    }
+
+    /// MPI_Comm_idup_with_info.  As idup(), with the info hints associated with the new
+    /// communicator.  The hints are captured at initiation (MPI 4.1 §7.4), so the info object
+    /// may be destroyed after the call returns.
+    [[nodiscard]] static request idup_with_info(const mpi_communicator& other,
+                                                const info& hints) {
+      require_factory_operand(other, "mp1::communicator::idup_with_info");
+      auto payload = std::make_unique<detail::idup_payload>();
+      MPI_Request handle{MPI_REQUEST_NULL};
+      detail::check_mpi(MPI_Comm_idup_with_info(other.native_handle(), hints.native_handle(),
+                                                payload->slot(), &handle),
+                        "MPI_Comm_idup_with_info");
+      request result = request::from_collective(handle);
+      detail::attach_payload(result, std::move(payload));
+      return result;
+    }
+
     [[nodiscard]] static communicator split(const mpi_communicator& other, int color,
                                             int key = 0) {
       require_factory_operand(other, "mp1::communicator::split");
@@ -503,6 +613,89 @@ namespace mp1 {
       detail::check_mpi(
           MPI_Comm_create_group(other.native_handle(), gr.native_handle(), tag.value, &result),
           "MPI_Comm_create_group");
+      return take_result(result, release_policy::free);
+    }
+
+    /// MPI_Comm_create_from_group.  Collective over the members of `gr` only (MPI 4.1 §7.4):
+    /// every member must pass the same group and stringtag.  An empty group is a local
+    /// operation and returns an invalid owner without an MPI creation call.  A non-member call
+    /// is MPI-erroneous and deliberately not diagnosed locally; MPI is the authority.
+    ///
+    /// Both `hints` and `handler` are required (MPI order: info, then the MPI 4.1 error
+    /// handler).  mp1::info{} is the valid no-hints spelling.  Under MPI 4.1 §9.3.1 the handler
+    /// must be a predefined handler or one created by MPI_Comm_create_errhandler;
+    /// MPI_ERRHANDLER_NULL is the null handle and is not a valid handler.  mp1::error_handler
+    /// models only the predefined handlers, so a custom handler is installed with raw MPI or
+    /// with MPI_Comm_set_errhandler on native_handle() after creation.
+    [[nodiscard]] static communicator create_from_group(const group& gr,
+                                                        std::string_view stringtag,
+                                                        const info& hints,
+                                                        error_handler handler) {
+      const context ctx{"mp1::communicator::create_from_group"};
+      if (not gr.is_valid())
+        throw_invalid(ctx.operation, "invalid group");
+      detail::require_mpi(ctx);
+      const char* native_tag = detail::stringtag_text(stringtag, ctx);
+      const MPI_Errhandler native_handler = detail::native_error_handler(ctx, handler);
+      if (gr.is_empty())
+        return communicator{};
+      MPI_Comm result{MPI_COMM_NULL};
+      detail::check_mpi(
+          MPI_Comm_create_from_group(gr.native_handle(), native_tag, hints.native_handle(),
+                                     native_handler, &result),
+          "MPI_Comm_create_from_group");
+      return take_result(result, release_policy::free);
+    }
+
+    /// MPI_Intercomm_create_from_groups.  Collective over the union of the local and remote
+    /// groups (MPI 4.1 §7.6).  `local_group` and `remote_group` must be disjoint; within each
+    /// group every process passes the same local group/leader and all processes pass the same
+    /// stringtag.  Non-membership is MPI-erroneous and is deliberately left to MPI.
+    ///
+    /// `remote_group` and `remote_leader` are significant only at `local_leader`, so only the
+    /// leader validates them; a non-leader may pass group{} and any remote_leader value.  An
+    /// empty local group is a local operation returning an invalid owner.  Both `hints` and
+    /// `handler` are required, with the MPI 4.1 §9.3.1 validity rule described at
+    /// create_from_group().  The result is released with MPI_Comm_free (release_policy::free),
+    /// not MPI_Comm_disconnect.
+    [[nodiscard]] static communicator intercomm_create_from_groups(
+        const group& local_group, int local_leader, const group& remote_group,
+        int remote_leader, std::string_view stringtag, const info& hints,
+        error_handler handler) {
+      const context ctx{"mp1::communicator::intercomm_create_from_groups"};
+      if (not local_group.is_valid())
+        throw_invalid(ctx.operation, "invalid local group");
+      detail::require_mpi(ctx);
+      const char* native_tag = detail::stringtag_text(stringtag, ctx);
+      const MPI_Errhandler native_handler = detail::native_error_handler(ctx, handler);
+      if (local_group.is_empty())
+        return communicator{};
+      // Read the rank only to select the leader branch; a non-member is treated as a
+      // non-leader and the erroneous call is left to MPI (no local throw).
+      const int local_rank = local_group.rank();
+      if (local_rank != MPI_UNDEFINED) {
+        if (local_leader < 0 or local_leader >= local_group.size()) {
+          detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
+                                                 "local_leader {} is outside [0,{})",
+                                                 local_leader, local_group.size());
+        }
+        if (local_rank == local_leader) {
+          if (not remote_group.is_valid())
+            throw_invalid(ctx.operation, "invalid remote group");
+          if (not remote_group.is_empty() and
+              (remote_leader < 0 or remote_leader >= remote_group.size())) {
+            detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
+                                                   "remote_leader {} is outside [0,{})",
+                                                   remote_leader, remote_group.size());
+          }
+        }
+      }
+      MPI_Comm result{MPI_COMM_NULL};
+      detail::check_mpi(
+          MPI_Intercomm_create_from_groups(
+              local_group.native_handle(), local_leader, remote_group.native_handle(),
+              remote_leader, native_tag, hints.native_handle(), native_handler, &result),
+          "MPI_Intercomm_create_from_groups");
       return take_result(result, release_policy::free);
     }
 
@@ -714,7 +907,46 @@ namespace mp1 {
     bool parent_{false};
 
     friend communicator parent();
+    friend struct detail::comm_factory;
   };
+
+  namespace detail {
+
+    // Single construction point for the owning communicator result of take_communicator().
+    struct comm_factory {
+      [[nodiscard]] static communicator make(MPI_Comm handle, release_policy policy) {
+        return communicator::take_result(handle, policy);
+      }
+    };
+
+  }  // namespace detail
+
+  /// Transfer the completed duplicate out of an MPI_Comm_idup request (MPI 4.1 §7.4).
+  ///
+  /// Requires request::has_result(): a request with no retained result (every non-idup
+  /// request, and an idup request whose result was already taken) is std::invalid_argument;
+  /// an idup request that has not completed is std::logic_error.  On success the request
+  /// becomes freed and the returned owner releases the duplicate with MPI_Comm_free.  If
+  /// building the communicator view fails, the handle is counted as abandoned and mpi_error /
+  /// std::runtime_error propagates; the request is already freed.  take_communicator() does
+  /// not wait: complete the request first so its status stays visible.
+  [[nodiscard]] inline communicator take_communicator(request& r) {
+    if (not detail::request_access::retains_result(r))
+      throw_invalid("mp1::take_communicator", "request has no communicator result");
+    if (r.state() != request_state::result_pending) {
+      detail::fail_with<std::logic_error>("mp1::take_communicator",
+                                          std::source_location::current(),
+                                          "the request has not completed");
+    }
+
+    MPI_Comm handle = detail::request_access::payload(r)->release_comm();
+    detail::request_access::clear_payload(r);
+    detail::request_access::set_state(r, request_state::freed);
+
+    if (handle == MPI_COMM_NULL)
+      return communicator{};
+    return detail::comm_factory::make(handle, release_policy::free);
+  }
 
   namespace detail {
 

@@ -32,8 +32,14 @@ MPI_Comm_split_type
 MPI_Comm_create
 MPI_Comm_create_group
 MPI_Intercomm_create
+MPI_Intercomm_create_from_groups
+MPI_Comm_create_from_group
+MPI_Comm_idup
+MPI_Comm_idup_with_info
 MPI_Group_incl
 MPI_Group_excl
+MPI_Group_range_incl
+MPI_Group_range_excl
 MPI_Group_union
 MPI_Group_intersection
 MPI_Group_difference

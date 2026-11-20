@@ -28,6 +28,20 @@ namespace mp1::detail {
 
     virtual void prepare_start() {
     }
+
+    /// \return true if a successful completion leaves a result in this payload that the caller
+    /// must transfer out (the idup payload).  Default false; every data-carrying payload
+    /// delivers its result through complete() instead.
+    [[nodiscard]] virtual bool retains_result() const noexcept {
+      return false;
+    }
+
+    /// Transfer the retained MPI handle after a successful completion.  Returns
+    /// MPI_COMM_NULL when there is no result or the payload was never completed; the base
+    /// payload retains no handle.  Must not be called before complete().
+    [[nodiscard]] virtual MPI_Comm release_comm() noexcept {
+      return MPI_COMM_NULL;
+    }
   };
 
   inline std::atomic<std::size_t>& abandoned_payload_counter() noexcept {

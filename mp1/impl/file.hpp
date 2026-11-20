@@ -154,10 +154,10 @@ namespace mp1 {
   /// locally, with the single exception of get_byte_offset; resize/preallocate are rejected;
   /// set_view requires MPI_DISPLACEMENT_CURRENT.
   ///
-  /// Deliberately outside 1.0: get_view (needs the owning raw MPI_Datatype bridge, deferred to
-  /// 1.1), register_datarep/user data representations, file error-handler objects (the default
-  /// MPI_ERRORS_RETURN makes mpi_error reachable), and a raw heterogeneous set_view. Use
-  /// native_handle() for those raw MPI operations.
+  /// Deliberately outside the typed surface: get_view (needs the owning raw MPI_Datatype
+  /// bridge; future work), register_datarep/user data representations, file error-handler
+  /// objects (the default MPI_ERRORS_RETURN makes mpi_error reachable), and a raw heterogeneous
+  /// set_view. Use native_handle() for those raw MPI operations.
   ///
   /// Type matching (MPI 4.1 section 14.6.6): a typed access is locally rejected unless the
   /// recorded view is unknown (raw/adopted handle or a failed set_view), the view etype is

@@ -30,7 +30,7 @@ function takes a `source_location` or a `what` parameter.
 
 The examples are built by default when mp1 is the top-level project. A
 consumer that only uses an installed package needs a C++20 compiler and
-`find_package(mp1 1.1 CONFIG REQUIRED)`; the imported target raises the
+`find_package(mp1 2.0 CONFIG REQUIRED)`; the imported target raises the
 consumer to C++20. Boost.Test is needed only for the in-tree test suite.
 
 ## Supported typed surface
@@ -38,14 +38,22 @@ consumer to C++20. Boost.Test is needed only for the in-tree test suite.
 - World-Model lifecycle: initialization/finalization, thread level
   (`query_thread`, `provided`, `is_thread_main`), timers, version and
   hardware-resource queries.
-- Communicator management: `dup`/`dup_with_info`, `split`/`split_type`,
-  `create`/`create_group`, `merge`, `intercomm_create`, `adopt`/
+- Communicator management: `dup`/`dup_with_info`, nonblocking
+  `idup`/`idup_with_info` with the `result_pending`/`take_communicator` result
+  model, `split`/`split_type`, `create`/`create_group`, `create_from_group`,
+  `merge`, `intercomm_create`/`intercomm_create_from_groups`, `adopt`/
   `adopt_connected`, `compare`, `get_info`/`set_info`, and
   `free`/`disconnect`/`release`, plus `view()`/`policy()` and the borrowed
   process-lifetime `comm_world()`/`comm_self()` views and the always-available
   `comm_null()` sentinel. The release policy is fixed at construction: `free`
   for the ordinary factories, `disconnect` for spawn/parent/adopted
-  connections.
+  connections. Both from-group factories require an explicit `info` and
+  predefined `mp1::error_handler`; `MPI_ERRHANDLER_NULL` is the null handle,
+  not a valid handler (MPI 4.1 §9.3.1), so a provider that rejects it is
+  conforming. mp1 has no owning error-handler bridge: a custom handler is raw
+  MPI or `MPI_Comm_set_errhandler` on the created communicator. Non-membership
+  of either from-group call is MPI-erroneous and is deliberately not diagnosed
+  locally.
 - Point-to-point: blocking, buffered, synchronous and ready sends, each in
   blocking, nonblocking and persistent form; blocking, nonblocking and
   persistent receives; matched probe/receive; blocking and nonblocking combined
@@ -264,11 +272,10 @@ because a type-only query has no operand to classify.
 | `MPI_MAXLOC`/`MPI_MINLOC`, CAS outside the C integer/Logical/Byte categories, or count/layout forms of CAS/FOP | Rejected before MPI. `fetch_and_op` and `compare_and_swap` are single-element and require a predefined C++ datatype; there is no homogeneous-derived fallback. |
 | RMA container data forms | Origin/result are `std::span`/`region`; there is no container overload. Use `std::span{container}` or a layout. |
 | Typed `MPI_MAXLOC`/`MPI_MINLOC` reductions | mp1 has no `MPI_2*` pair datatype model. Raw `MPI_Op` handles are accepted by the non-RMA reduction families, but using them is raw-MPI territory. |
-| Advanced communicator and group creation (`MPI_Comm_idup*`, `MPI_Comm_create_from_group`, `MPI_Intercomm_create_from_groups`, `MPI_Group_range_*`) | Not wrapped. Use raw MPI through `native_handle()` or `communicator::adopt()`. |
 | A raw `int` tag or an implicit `int` -> `mp1::tag` conversion | Source-breaking by design: spell tag literals as `mp1::tag{n}` and the wildcard as `mp1::any_tag`. |
-| Point-to-point shape limits: persistent iterator forms, auto-size `irecv`, auto-size persistent receive, sequence-container receive targets, combined iterator forms, persistent `sendrecv` | Frozen out for 1.0. Persistent operations capture a fixed address; a nonblocking container receive uses the bounded form, `std::array` or a region; combined send-receive is one-shot only. Use raw MPI where the exact shape is required. A non-contiguous sequence send is typed and never a byte image: trivially copyable elements are staged, other elements use the absolute-address `MPI_BOTTOM` form and borrow the caller's elements until completion. |
+| Point-to-point shape limits: persistent iterator forms, auto-size `irecv`, auto-size persistent receive, sequence-container receive targets, combined iterator forms, persistent `sendrecv` | Frozen out. Persistent operations capture a fixed address; a nonblocking container receive uses the bounded form, `std::array` or a region; combined send-receive is one-shot only. Use raw MPI where the exact shape is required. A non-contiguous sequence send is typed and never a byte image: trivially copyable elements are staged, other elements use the absolute-address `MPI_BOTTOM` form and borrow the caller's elements until completion. |
 | Persistent collective container data buffers | Fixed buffers only. Dense and typed descriptor arrays are accepted because the plan copies them. |
-| File `get_view`, `register_datarep`/user datareps, and raw heterogeneous `set_view` | `get_view` is deferred to 1.1 with the owning raw-datatype bridge; the rest are outside 1.x. Typed views enforce only the locally provable MPI 4.1 §14.3 rules: a proven descending or negative etype displacement map is rejected for every access mode, and a proven overlapping filetype is rejected when the file is open for writing. A custom derived datatype map whose order or overlap is not recorded is left to MPI. |
+| File `get_view`, `register_datarep`/user datareps, and raw heterogeneous `set_view` | `get_view` is future work (requires the owning raw-datatype bridge); the remaining items are not implemented. Typed views enforce only the locally provable MPI 4.1 §14.3 rules: a proven descending or negative etype displacement map is rejected for every access mode, and a proven overlapping filetype is rejected when the file is open for writing. A custom derived datatype map whose order or overlap is not recorded is left to MPI. |
 | File `layout<T>` × count | A repeated layout is spelled `layout<T>::contiguous(n, block)`, or use the range/region form. |
 | MPI Sessions | Not wrapped. Do not mix session and World-Model objects in mp1. |
 | Partitioned point-to-point | Not wrapped. Use raw MPI requests. |
@@ -472,6 +479,13 @@ versions and configurations are recorded in the release evidence.
   standard-conforming and mp1 does not reject it locally; verify it on the
   target provider and prefer a non-sequential mode when the byte offset is
   required.
+- **Intel MPI 2021.19 non-leader `remote_group`.** MPI 4.1 §7.6.2 makes
+  `remote_group` and `remote_leader` significant only at `local_leader`, but
+  Intel MPI 2021.19.2 validates `remote_group` on every local rank and rejects
+  a non-leader `MPI_GROUP_NULL` with `MPI_ERR_GROUP` ("Null group"). It ignores
+  an invalid `remote_leader` at non-leaders. mp1 follows the standard and keeps
+  the leader-only validation; portable code passes the same valid remote group
+  on every local rank and a valid remote leader at the leader.
 - **Large-count routines.** mp1 consistently uses the MPI 4.1 `_c` large-count
   entry points; a provider that advertises MPI 4.1 but has an incomplete `_c`
   implementation is not supported.

@@ -9,6 +9,7 @@
 
 #include "mp1/mp1.hpp"
 
+#include <array>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -190,11 +191,17 @@ void api_group(const mp1::mpi_communicator& world) {
   (void)equality;
   (void)native;
 
-  const mp1::group included = mp1::group_incl(g, {0});
-  const mp1::group excluded = mp1::group_excl(g, {0});
+  const mp1::group included = mp1::group_incl(g, std::array{0});
+  const mp1::group excluded = mp1::group_excl(g, std::array{0});
   const mp1::group united = mp1::group_union(included, excluded);
   const mp1::group intersected = mp1::group_intersection(included, excluded);
   const mp1::group different = mp1::group_difference(united, intersected);
+  // MPI_Group_range_incl/excl: one MPI-shaped (first, last, stride) triplet list.
+  const std::array<mp1::rank_range, 1> ranges{mp1::rank_range{0, 0, 1}};
+  const mp1::group range_included = mp1::group_range_incl(g, ranges);
+  const mp1::group range_excluded = mp1::group_range_excl(g, ranges);
+  (void)range_included;
+  (void)range_excluded;
   (void)different;
 }
 

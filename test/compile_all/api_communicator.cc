@@ -85,6 +85,25 @@ void api_communicator(const mp1::mpi_communicator& other) {
   split_type.free();
 }
 
+void api_communicator_advanced(const mp1::mpi_communicator& other, const mp1::group& local,
+                               const mp1::group& remote, const mp1::info& hints) {
+  mp1::request idup = mp1::communicator::idup(other);
+  mp1::request idup_info = mp1::communicator::idup_with_info(other, hints);
+  mp1::communicator from_group = mp1::communicator::create_from_group(
+      local, "mp1-api-tag", hints, mp1::error_handler::returns);
+  mp1::communicator inter = mp1::communicator::intercomm_create_from_groups(
+      local, 0, remote, 0, "mp1-api-tag", hints, mp1::error_handler::returns);
+  const bool has_result = idup.has_result();
+  (void)idup_info;
+  (void)from_group;
+  (void)inter;
+  (void)has_result;
+  if (idup.has_result()) {
+    mp1::communicator taken = mp1::take_communicator(idup);
+    (void)taken;
+  }
+}
+
 void api_world_factories() {
   mp1::mpi_communicator world = mp1::comm_world();
   mp1::mpi_communicator self = mp1::comm_self();
@@ -101,9 +120,11 @@ void api_request() {
   bool valid = r.is_valid();
   bool active = r.is_active();
   bool persistent = r.is_persistent();
+  bool result = r.has_result();
   (void)valid;
   (void)active;
   (void)persistent;
+  (void)result;
   r.start();
   mp1::status waited = r.wait();
   const std::optional<mp1::status> tested = r.test();
