@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.1 — 2026-11-21
+
+Version 2.0.1 is a performance-only patch release. It adds C++20 branch
+likelihood hints to the internal check and completion paths; no public API,
+observable behavior, or wire format changes.
+
+### Changed
+
+- Rare failure paths are marked `[[unlikely]]`: local condition/state/policy
+  checks, MPI return-code failures, exception rethrows, cold release paths,
+  and failure `switch` cases. Hot success paths, including active-MPI
+  classification and successful request completion, are marked `[[likely]]`.
+  The hints affect code layout only.
+
 ## 2.0.0 — 2026-11-20
 
 Version 2.0.0 adds the advanced communicator and group creation surface and the
