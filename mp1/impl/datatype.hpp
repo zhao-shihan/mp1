@@ -300,7 +300,7 @@ namespace mp1 {
       // defined; the checked helper still reports a non-representable one locally.
       const context ctx{"mp1: reflected datatype"};
       const MPI_Aint relative = detail::checked_address_diff(member_address, base_, ctx);
-      if (not std::in_range<MPI_Count>(relative)) {
+      if (not std::in_range<MPI_Count>(relative)) [[unlikely]] {
         detail::fail_as<std::overflow_error>(ctx, std::source_location::current(),
                                              "member displacement does not fit MPI_Count");
       }
@@ -639,7 +639,7 @@ namespace mp1 {
         // A custom trait can return MPI_DATATYPE_NULL, for example a failed constructor, a
         // disabled language binding, or a typo.  Every query below is erroneous for a null
         // handle and would abort under the default error handler; fail closed locally.
-        if (info.type == MPI_DATATYPE_NULL)
+        if (info.type == MPI_DATATYPE_NULL) [[unlikely]]
           detail::fail_as<std::invalid_argument>(
               {"mp1"}, std::source_location::current(),
               "native_datatype<{}>() is MPI_DATATYPE_NULL; a datatype mapping must return a "
@@ -660,11 +660,11 @@ namespace mp1 {
         info.true_lb = checked_count(true_lb, "native_datatype<T> true lower bound");
         info.true_extent = checked_count(true_extent, "native_datatype<T> true extent");
         const count_t sizeof_t = static_cast<count_t>(sizeof(T));
-        if (info.extent != sizeof_t)
+        if (info.extent != sizeof_t) [[unlikely]]
           throw_invalid_base_geometry(name.c_str(), extent, true_lb, true_extent, sizeof(T));
         const count_t true_upper =
             checked_count_add(info.true_lb, info.true_extent, "native_datatype<T> true extent");
-        if (info.true_lb < 0 or info.true_extent < 0 or true_upper > sizeof_t)
+        if (info.true_lb < 0 or info.true_extent < 0 or true_upper > sizeof_t) [[unlikely]]
           throw_invalid_base_geometry(name.c_str(), extent, true_lb, true_extent, sizeof(T));
 
         if constexpr (std::is_enum_v<T>) {

@@ -58,7 +58,7 @@ namespace mp1::detail {
   // both the staged form aggregates and the reduction adapters need the pre-call check.
   template<class T>
   void require_staged_receive_pointer(const T* recv, const layout<T>& l, const context& ctx) {
-    if (recv == nullptr and l.byte_size() != 0) {
+    if (recv == nullptr and l.byte_size() != 0) [[unlikely]] {
       throw_invalid(ctx.operation, "null receive pointer for a non-empty layout");
     }
   }
@@ -218,7 +218,7 @@ namespace mp1::detail {
       return;
     MPI_Count bytes{0};
     if (position.typed) {
-      if (not position.map->is_valid())
+      if (not position.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid layout");
       bytes = static_cast<MPI_Count>(position.map->byte_size());
     } else {
@@ -380,7 +380,7 @@ namespace mp1::detail {
   [[nodiscard]] native_block<T> single_block(const form_position<T>& position,
                                              const context& ctx) {
     if (position.typed) {
-      if (not position.map->is_valid())
+      if (not position.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid layout");
       if (position.map->is_base_repetition())
         return native_block<T>{repetition_ptr(position.data, *position.map, ctx),
@@ -398,7 +398,7 @@ namespace mp1::detail {
   [[nodiscard]] native_block<T> single_block_mutable(const form_position<T>& position,
                                                      const context& ctx) {
     if (position.typed) {
-      if (not position.map->is_valid())
+      if (not position.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid layout");
       if (position.map->is_base_repetition())
         return native_block<T>{repetition_ptr(position.mutable_data, *position.map, ctx),
@@ -419,7 +419,7 @@ namespace mp1::detail {
   template<class T>
   void stage_aggregate_send(form_plan<T>& plan, const form_position<T>& position,
                             const context& ctx) {
-    if (not position.map->is_valid())
+    if (not position.map->is_valid()) [[unlikely]]
       throw_invalid(ctx.operation, "invalid layout");
     const std::size_t elements = static_cast<std::size_t>(position.map->size());
     plan.send_stage.resize(elements);
@@ -437,7 +437,7 @@ namespace mp1::detail {
   template<class T>
   void stage_aggregate_recv(form_plan<T>& plan, const form_position<T>& position,
                             prime_policy priming, const context& ctx) {
-    if (not position.map->is_valid())
+    if (not position.map->is_valid()) [[unlikely]]
       throw_invalid(ctx.operation, "invalid layout");
     require_receive_layout(*position.map, ctx);
     // Validate the caller's destination before the native collective is issued, not only when
@@ -535,7 +535,7 @@ namespace mp1::detail {
       return captured;
     }
     if (position.typed) {
-      if (not position.map->is_valid())
+      if (not position.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid layout");
       captured.elements = position.map->size();
       if (position.map->is_base_repetition()) {
@@ -569,7 +569,7 @@ namespace mp1::detail {
     if (place == place_state::mpi_in_place)
       return captured;
     if (position.typed) {
-      if (not position.map->is_valid())
+      if (not position.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid layout");
       captured.elements = position.map->size();
       if (position.map->is_base_repetition()) {

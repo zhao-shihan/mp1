@@ -172,7 +172,7 @@ namespace mp1 {
     [[nodiscard]] count_t get_count(const layout<T>& l) const {
       if (not count_defined_)
         return 0;
-      if (not l.is_valid())
+      if (not l.is_valid()) [[unlikely]]
         throw_invalid("mp1::status::get_count", "invalid layout");
       detail::require_mpi("mp1::status::get_count");
       MPI_Count count{0};
@@ -201,7 +201,7 @@ namespace mp1 {
     [[nodiscard]] count_t get_elements(const layout<T>& l) const {
       if (not count_defined_)
         return 0;
-      if (not l.is_valid())
+      if (not l.is_valid()) [[unlikely]]
         throw_invalid("mp1::status::get_elements", "invalid layout");
       detail::require_mpi("mp1::status::get_elements");
       MPI_Count count{0};

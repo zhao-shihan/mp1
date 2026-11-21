@@ -38,7 +38,7 @@ namespace mp1::detail {
     if (dest == MPI_PROC_NULL)
       return;
     const int peers = p2p_peer_count(c);
-    if (dest < 0 or dest >= peers) {
+    if (dest < 0 or dest >= peers) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "dest {} is outside [0,{})", dest, peers);
     }
@@ -48,7 +48,7 @@ namespace mp1::detail {
     if (source == MPI_PROC_NULL or source == MPI_ANY_SOURCE)
       return;
     const int peers = p2p_peer_count(c);
-    if (source < 0 or source >= peers) {
+    if (source < 0 or source >= peers) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "source {} is outside [0,{})", source, peers);
     }
@@ -58,15 +58,15 @@ namespace mp1::detail {
   // or probe tag may be MPI_ANY_TAG in addition to that range.  Both checks read only the
   // communicator's cached tag_ub(), so validating a tag never makes an MPI call.
   inline void p2p_require_send_tag(const mpi_communicator& c, tag t, const context& ctx) {
-    if (t == any_tag) {
+    if (t == any_tag) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "MPI_ANY_TAG is not a send tag");
     }
-    if (t.value < 0) {
+    if (t.value < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "tag {} is negative", t.value);
     }
-    if (t.value > c.tag_ub()) {
+    if (t.value > c.tag_ub()) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "tag {} exceeds MPI_TAG_UB {}", t.value,
                                              c.tag_ub());
@@ -76,11 +76,11 @@ namespace mp1::detail {
   inline void p2p_require_recv_tag(const mpi_communicator& c, tag t, const context& ctx) {
     if (t == any_tag)
       return;
-    if (t.value < 0) {
+    if (t.value < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "tag {} is negative and not any_tag", t.value);
     }
-    if (t.value > c.tag_ub()) {
+    if (t.value > c.tag_ub()) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "tag {} exceeds MPI_TAG_UB {}", t.value,
                                              c.tag_ub());
@@ -145,11 +145,11 @@ namespace mp1::detail {
 
     void complete(const status& s) override {
       const count_t actual = s.get_count<value_type>();
-      if (is_undefined_count(actual) or actual < 0) {
+      if (is_undefined_count(actual) or actual < 0) [[unlikely]] {
         throw_invalid("mp1::irecv container",
                       "message type does not match container value_type");
       }
-      if (actual > capacity_) {
+      if (actual > capacity_) [[unlikely]] {
         throw_invalid("mp1::irecv container", "receive capacity exceeded");
       }
       data_->resize(static_cast<std::size_t>(actual));
@@ -188,7 +188,7 @@ namespace mp1::detail {
     }
 
     void prepare_start() override {
-      if (data_->data() != expected_ or data_->size() != size_) {
+      if (data_->data() != expected_ or data_->size() != size_) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx_, std::source_location::current(),
             "the borrowed container was resized or reallocated after the persistent send was "
@@ -231,7 +231,7 @@ namespace mp1::detail {
 
     void prepare_start() override {
       const std::ptrdiff_t distance = std::distance(data_->begin(), data_->end());
-      if (distance != static_cast<std::ptrdiff_t>(count_)) {
+      if (distance != static_cast<std::ptrdiff_t>(count_)) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx_, std::source_location::current(),
             "the borrowed container size changed after the persistent send was initialized");
@@ -264,8 +264,8 @@ namespace mp1::detail {
     }
 
     void prepare_start() override {
-      if (data_->data() != expected_ or
-          data_->capacity() < static_cast<std::size_t>(capacity_)) {
+      if (data_->data() != expected_ or data_->capacity() < static_cast<std::size_t>(capacity_))
+          [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx_, std::source_location::current(),
             "the receive container was reallocated after recv_init; the fixed-capacity buffer "
@@ -276,12 +276,12 @@ namespace mp1::detail {
 
     void complete(const status& s) override {
       const count_t actual = s.get_count<value_type>();
-      if (is_undefined_count(actual) or actual < 0) {
+      if (is_undefined_count(actual) or actual < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx_, std::source_location::current(),
             "message type does not match container value_type");
       }
-      if (actual > capacity_) {
+      if (actual > capacity_) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx_, std::source_location::current(),
                                                "received count exceeds the fixed capacity");
       }
@@ -384,7 +384,7 @@ namespace mp1::detail {
     MPI_Status native{};
     check_mpi(MPI_Mprobe(source, tag.value, c.native_handle(), &message, &native),
               {"MPI_Mprobe"});
-    if (message == MPI_MESSAGE_NULL) {
+    if (message == MPI_MESSAGE_NULL) [[unlikely]] {
       // A successful matching probe returns a matched message or MPI_MESSAGE_NO_PROC
       // (MPI 4.1 §3.8.2); a null handle is a provider contract violation, not a message.
       detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
@@ -398,11 +398,11 @@ namespace mp1::detail {
     // MPI 4.1 §3.3.1 makes that program erroneous and the matched receive below behaves
     // exactly like the underlying MPI receive.
     const count_t count = probed.get_count<value_type>();
-    if (is_undefined_count(count) or count < 0) {
+    if (is_undefined_count(count) or count < 0) [[unlikely]] {
       throw_invalid(ctx.operation, "message type does not match container value_type");
     }
     if constexpr (is_contiguous_resizable_v<plain>) {
-      if (static_cast<std::size_t>(count) > data.max_size()) {
+      if (static_cast<std::size_t>(count) > data.max_size()) [[unlikely]] {
         throw_invalid(ctx.operation, "message is larger than container max_size");
       }
       data.resize(static_cast<std::size_t>(count));
@@ -421,10 +421,10 @@ namespace mp1::detail {
   inline void finish_capacity(C& data, capacity cap, const status& s, const context& ctx) {
     using value_type = container_value_t<C>;
     const count_t actual = s.get_count<value_type>();
-    if (is_undefined_count(actual) or actual < 0) {
+    if (is_undefined_count(actual) or actual < 0) [[unlikely]] {
       throw_invalid(ctx.operation, "message type does not match container value_type");
     }
-    if (actual > cap.value()) {
+    if (actual > cap.value()) [[unlikely]] {
       throw_invalid(ctx.operation, "receive capacity exceeded");
     }
     data.resize(static_cast<std::size_t>(actual));
@@ -441,7 +441,7 @@ namespace mp1::detail {
     p2p_require_comm(c, ctx);
     p2p_require_source(c, source, ctx);
     p2p_require_recv_tag(c, tag, ctx);
-    if (cap.value() < 0)
+    if (cap.value() < 0) [[unlikely]]
       throw_invalid(ctx.operation, "negative capacity");
     if (source == MPI_PROC_NULL) {
       return native_recv(
@@ -477,7 +477,7 @@ namespace mp1::detail {
     p2p_require_comm(c, ctx);
     p2p_require_source(c, source, ctx);
     p2p_require_recv_tag(c, tag, ctx);
-    if (cap.value() < 0)
+    if (cap.value() < 0) [[unlikely]]
       throw_invalid(ctx.operation, "negative capacity");
     if (source == MPI_PROC_NULL) {
       return native_irecv(
@@ -516,7 +516,7 @@ namespace mp1::detail {
     p2p_require_comm(c, ctx);
     p2p_require_source(c, source, ctx);
     p2p_require_recv_tag(c, tag, ctx);
-    if (cap.value() < 0)
+    if (cap.value() < 0) [[unlikely]]
       throw_invalid(ctx.operation, "negative capacity");
     if (source == MPI_PROC_NULL) {
       // MPI 4.1 §3.10: a receive from MPI_PROC_NULL succeeds without touching the buffer. Do
@@ -527,7 +527,7 @@ namespace mp1::detail {
                               native_datatype<value_type>()},
           source, tag.value, c.native_handle(), nullptr);
     }
-    if (static_cast<std::size_t>(cap.value()) > data.max_size())
+    if (static_cast<std::size_t>(cap.value()) > data.max_size()) [[unlikely]]
       throw_invalid(ctx.operation, "capacity exceeds container max_size");
     data.resize(static_cast<std::size_t>(cap.value()));
     auto payload = std::make_unique<persistent_capacity_recv_payload<C>>(std::addressof(data),
@@ -688,7 +688,7 @@ namespace mp1::detail {
     const count_t elements = static_cast<count_t>(std::ssize(range));
     const value_type* data = std::ranges::data(range);
     if (data == nullptr) {
-      if (elements > 0 and not ignored) {
+      if (elements > 0 and not ignored) [[unlikely]] {
         throw_invalid(ctx.operation, "null data pointer for a non-empty buffer");
       }
       // MPI_PROC_NULL ignores the buffer and a zero-count buffer has no elements; some
@@ -709,7 +709,7 @@ namespace mp1::detail {
     const count_t elements = static_cast<count_t>(std::ssize(range));
     value_type* data = std::ranges::data(range);
     if (data == nullptr) {
-      if (used and elements > 0) {
+      if (used and elements > 0) [[unlikely]] {
         throw_invalid(ctx.operation, "null data pointer for a non-empty buffer");
       }
       data = static_cast<value_type*>(dummy_buffer(buffer_slot::recv));
@@ -760,7 +760,7 @@ namespace mp1::detail {
                                                   const context& ctx, const char* replacement) {
     if (not both_active or send.address == nullptr or recv.address == nullptr)
       return;
-    if (send.address == recv.address)
+    if (send.address == recv.address) [[unlikely]]
       throw_sendrecv_alias(ctx, replacement);
     if (send.bytes > 0 and recv.bytes > 0) {
       const auto* send_begin = static_cast<const char*>(send.address);
@@ -768,7 +768,7 @@ namespace mp1::detail {
       const auto* send_end = send_begin + send.bytes;
       const auto* recv_end = recv_begin + recv.bytes;
       const std::less<const char*> less;
-      if (less(send_begin, recv_end) and less(recv_begin, send_end))
+      if (less(send_begin, recv_end) and less(recv_begin, send_end)) [[unlikely]]
         throw_sendrecv_alias(ctx, replacement);
     }
   }
@@ -936,7 +936,7 @@ namespace mp1::detail {
     const count_t elements = static_cast<count_t>(std::ssize(range));
     value_type* data = std::ranges::data(range);
     if (data == nullptr) {
-      if (not ignored and elements > 0) {
+      if (not ignored and elements > 0) [[unlikely]] {
         throw_invalid(ctx.operation, "null data pointer for a non-empty buffer");
       }
       // MPI_PROC_NULL ignores the buffer and a zero-count buffer has no elements; use the
@@ -1346,7 +1346,7 @@ namespace mp1 {
     /// the owner, and normalize the MPI_MESSAGE_NO_PROC status.
     [[nodiscard]] inline status mrecv_message(const mutable_buffer_view& buffer, message& msg,
                                               const context& ctx) {
-      if (not msg.is_valid()) {
+      if (not msg.is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "invalid message handle (null, consumed, or moved-from)");
       }
       const bool no_proc = msg.is_no_proc();
@@ -1366,7 +1366,7 @@ namespace mp1 {
     [[nodiscard]] inline request imrecv_message(const mutable_buffer_view& buffer, message& msg,
                                                 std::unique_ptr<request_payload> payload,
                                                 const context& ctx) {
-      if (not msg.is_valid()) {
+      if (not msg.is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "invalid message handle (null, consumed, or moved-from)");
       }
       request result{};
@@ -1419,13 +1419,13 @@ namespace mp1 {
           return;
         }
         const count_t count = msg.probed_status().get_count<value_type>();
-        if (is_undefined_count(count) or count < 0) {
+        if (is_undefined_count(count) or count < 0) [[unlikely]] {
           throw_invalid(ctx.operation, "message type does not match container value_type");
         }
-        if (bound_ >= 0 and count > bound_) {
+        if (bound_ >= 0 and count > bound_) [[unlikely]] {
           throw_invalid(ctx.operation, "receive capacity exceeded");
         }
-        if (static_cast<std::size_t>(count) > data.max_size()) {
+        if (static_cast<std::size_t>(count) > data.max_size()) [[unlikely]] {
           throw_invalid(ctx.operation, "message is larger than container max_size");
         }
         data.resize(static_cast<std::size_t>(count));
@@ -1450,7 +1450,7 @@ namespace mp1 {
     template<class C>
     [[nodiscard]] inline status mrecv_auto_impl(C& data, message& msg, const context& ctx) {
       require_mpi(ctx);
-      if (not msg.is_valid()) {
+      if (not msg.is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "invalid message handle (null, consumed, or moved-from)");
       }
       matched_resizable_recv_plan<C> plan{data, msg, -1, ctx};
@@ -1463,9 +1463,9 @@ namespace mp1 {
     [[nodiscard]] inline status mrecv_bounded_impl(C& data, capacity bound, message& msg,
                                                    const context& ctx) {
       require_mpi(ctx);
-      if (bound.value() < 0)
+      if (bound.value() < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative capacity");
-      if (not msg.is_valid()) {
+      if (not msg.is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "invalid message handle (null, consumed, or moved-from)");
       }
       matched_resizable_recv_plan<C> plan{data, msg, bound.value(), ctx};
@@ -1503,9 +1503,9 @@ namespace mp1 {
     [[nodiscard]] inline request imrecv_bounded_impl(C& data, capacity bound, message& msg,
                                                      const context& ctx) {
       require_mpi(ctx);
-      if (bound.value() < 0)
+      if (bound.value() < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative capacity");
-      if (not msg.is_valid()) {
+      if (not msg.is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "invalid message handle (null, consumed, or moved-from)");
       }
       matched_resizable_recv_plan<C> plan{data, msg, bound.value(), ctx};
@@ -1954,7 +1954,7 @@ namespace mp1 {
     MPI_Status native{};
     detail::check_mpi(MPI_Mprobe(source, tag.value, c.native_handle(), &handle, &native),
                       {"MPI_Mprobe"});
-    if (handle == MPI_MESSAGE_NULL) {
+    if (handle == MPI_MESSAGE_NULL) [[unlikely]] {
       detail::fail_with<std::runtime_error>("mp1::mprobe", std::source_location::current(),
                                             "MPI_Mprobe returned a null message handle");
     }
@@ -1978,7 +1978,7 @@ namespace mp1 {
         {"MPI_Improbe"});
     if (flag == 0)
       return std::nullopt;
-    if (handle == MPI_MESSAGE_NULL) {
+    if (handle == MPI_MESSAGE_NULL) [[unlikely]] {
       // A successful matching probe must return a message handle or MPI_MESSAGE_NO_PROC
       // (MPI 4.1 §3.8.2).  A providers' null handle here is a contract violation, not a
       // message; refusing it is safer than handing out an invalid owner.

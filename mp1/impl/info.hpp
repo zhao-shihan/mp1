@@ -26,11 +26,11 @@ namespace mp1 {
     inline void info_validate_key(
         std::string_view key, const context& ctx,
         std::source_location where = std::source_location::current()) {
-      if (key.empty())
+      if (key.empty()) [[unlikely]]
         throw_invalid(ctx.operation, "empty info key", where);
-      if (key.find('\0') != std::string_view::npos)
+      if (key.find('\0') != std::string_view::npos) [[unlikely]]
         throw_invalid(ctx.operation, "info key contains an embedded NUL byte", where);
-      if (key.size() >= static_cast<std::size_t>(MPI_MAX_INFO_KEY)) {
+      if (key.size() >= static_cast<std::size_t>(MPI_MAX_INFO_KEY)) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, where, "info key length {} is not less than the MPI_MAX_INFO_KEY limit ({})",
             key.size(), MPI_MAX_INFO_KEY);
@@ -41,9 +41,9 @@ namespace mp1 {
     inline void info_validate_value(
         std::string_view value, const context& ctx,
         std::source_location where = std::source_location::current()) {
-      if (value.find('\0') != std::string_view::npos)
+      if (value.find('\0') != std::string_view::npos) [[unlikely]]
         throw_invalid(ctx.operation, "info value contains an embedded NUL byte", where);
-      if (value.size() >= static_cast<std::size_t>(MPI_MAX_INFO_VAL)) {
+      if (value.size() >= static_cast<std::size_t>(MPI_MAX_INFO_VAL)) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, where, "info value length {} is not less than the MPI_MAX_INFO_VAL limit ({})",
             value.size(), MPI_MAX_INFO_VAL);
@@ -189,7 +189,7 @@ namespace mp1 {
                         "MPI_Info_get_string");
       if (flag == 0)
         return std::nullopt;
-      if (length < 1 or length > MPI_MAX_INFO_VAL + 1) {
+      if (length < 1 or length > MPI_MAX_INFO_VAL + 1) [[unlikely]] {
         detail::fail_as<std::overflow_error>({"mp1::info::value"},
                                              std::source_location::current(),
                                              "MPI_Info_get_string reported length {}", length);
@@ -220,16 +220,16 @@ namespace mp1 {
     /// Key order is implementation-defined and stable until the next mutation.  Always
     /// available.
     [[nodiscard]] std::string key(int n) const {
-      if (info_ == MPI_INFO_NULL) {
+      if (info_ == MPI_INFO_NULL) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"mp1::info::key"}, std::source_location::current(), "n {} on a null info", n);
       }
-      if (n < 0) {
+      if (n < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"mp1::info::key"}, std::source_location::current(), "n {} is negative", n);
       }
       const int number_of_keys = size();
-      if (n >= number_of_keys) {
+      if (n >= number_of_keys) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::info::key"},
                                                std::source_location::current(),
                                                "n {} not in [0,{})", n, number_of_keys);

@@ -41,7 +41,7 @@
 namespace mp1::detail {
 
   [[nodiscard]] inline MPI_Count lowering_mpi_count(count_t value, const context& ctx) {
-    if (value < 0) {
+    if (value < 0) [[unlikely]] {
       throw_invalid(ctx.operation, "negative element count");
     }
     return static_cast<MPI_Count>(value);
@@ -73,7 +73,7 @@ namespace mp1::detail {
 
   template<class T>
   void require_relative(const layout<T>& l, const context& ctx) {
-    if (not l.is_valid()) {
+    if (not l.is_valid()) [[unlikely]] {
       throw_invalid(ctx.operation, "invalid layout");
     }
   }
@@ -108,7 +108,7 @@ namespace mp1::detail {
 
     [[nodiscard]] inline MPI_Aint checked_aint(MPI_Count value, const context& ctx) {
       if (value < static_cast<MPI_Count>(std::numeric_limits<MPI_Aint>::min()) or
-          value > static_cast<MPI_Count>(std::numeric_limits<MPI_Aint>::max())) {
+          value > static_cast<MPI_Count>(std::numeric_limits<MPI_Aint>::max())) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "type-map byte offset does not fit MPI_Aint");
       }
@@ -116,9 +116,9 @@ namespace mp1::detail {
     }
 
     [[nodiscard]] inline std::size_t checked_size(MPI_Count value, const context& ctx) {
-      if (value < 0 or
-          static_cast<unsigned long long>(value) >
-              static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+      if (value < 0 or static_cast<unsigned long long>(value) >
+                           static_cast<unsigned long long>(
+                               std::numeric_limits<std::size_t>::max())) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "type-map entry count does not fit std::size_t");
       }
@@ -128,7 +128,7 @@ namespace mp1::detail {
     [[nodiscard]] inline MPI_Aint checked_add(MPI_Aint left, MPI_Aint right,
                                               const context& ctx) {
       if ((right > 0 and left > std::numeric_limits<MPI_Aint>::max() - right) or
-          (right < 0 and left < std::numeric_limits<MPI_Aint>::min() - right)) {
+          (right < 0 and left < std::numeric_limits<MPI_Aint>::min() - right)) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "type-map byte offset overflow");
       }
@@ -137,11 +137,11 @@ namespace mp1::detail {
 
     [[nodiscard]] inline MPI_Count checked_product(MPI_Count left, MPI_Count right,
                                                    const context& ctx) {
-      if (left < 0 or right < 0) {
+      if (left < 0 or right < 0) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "negative type-map geometry");
       }
-      if (left != 0 and right > std::numeric_limits<MPI_Count>::max() / left) {
+      if (left != 0 and right > std::numeric_limits<MPI_Count>::max() / left) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "type-map geometry overflow");
       }
@@ -151,7 +151,7 @@ namespace mp1::detail {
     [[nodiscard]] inline MPI_Count checked_sum(MPI_Count left, MPI_Count right,
                                                const context& ctx) {
       if ((right > 0 and left > std::numeric_limits<MPI_Count>::max() - right) or
-          (right < 0 and left < std::numeric_limits<MPI_Count>::min() - right)) {
+          (right < 0 and left < std::numeric_limits<MPI_Count>::min() - right)) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "type-map geometry overflow");
       }
@@ -167,7 +167,7 @@ namespace mp1::detail {
       MPI_Count lower_bound{0};
       MPI_Count extent{0};
       check_mpi(MPI_Type_get_extent_c(type, &lower_bound, &extent), ctx);
-      if (extent < 0) {
+      if (extent < 0) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "negative datatype extent");
       }
@@ -294,7 +294,7 @@ namespace mp1::detail {
       };
       const auto entry_count = [&](MPI_Count count) -> std::size_t {
         const auto entries = type_map_detail::checked_size(count, ctx);
-        if (entries > (std::numeric_limits<std::size_t>::max() - 1) / 2) {
+        if (entries > (std::numeric_limits<std::size_t>::max() - 1) / 2) [[unlikely]] {
           detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                  "type-map entry count is too large");
         }
@@ -614,7 +614,7 @@ namespace mp1::detail {
   void require_disjoint_layout(const layout<T>& l, const context& ctx,
                                std::string_view side = {}) {
     require_relative(l, ctx);
-    if (l.has_overlapping_entries()) {
+    if (l.has_overlapping_entries()) [[unlikely]] {
       if (side.empty()) {
         throw_invalid(ctx.operation,
                       "type-map entries overlap; a location written or read more than once is "
@@ -633,7 +633,7 @@ namespace mp1::detail {
   template<class T>
   void require_receive_layout(const layout<T>& l, const context& ctx) {
     require_relative(l, ctx);
-    if (l.has_overlapping_entries()) {
+    if (l.has_overlapping_entries()) [[unlikely]] {
       throw_invalid(ctx.operation, "receive layout has overlapping type-map entries");
     }
   }
@@ -644,10 +644,10 @@ namespace mp1::detail {
   // size != extent confusion structurally unavailable.
   template<class T>
   [[nodiscard]] count_t packed_offset(const layout<T>& l, const context& ctx) {
-    if (not l.is_valid()) {
+    if (not l.is_valid()) [[unlikely]] {
       throw_invalid(ctx.operation, "invalid layout");
     }
-    if (not l.dense()) {
+    if (not l.dense()) [[unlikely]] {
       detail::fail_with<std::logic_error>(ctx.operation, std::source_location::current(),
                                           "packed lowering requires a packed layout");
     }
@@ -657,7 +657,7 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] const T* packed_ptr(const T* p, const layout<T>& l, const context& ctx) {
     const count_t offset = packed_offset(l, ctx);
-    if (l.byte_size() != 0 and p == nullptr) {
+    if (l.byte_size() != 0 and p == nullptr) [[unlikely]] {
       throw_invalid(ctx.operation, "null pointer for a non-empty packed layout");
     }
     return offset == 0 ? p : offset_bytes(p, offset);
@@ -671,10 +671,10 @@ namespace mp1::detail {
 
   template<class T>
   [[nodiscard]] count_t repetition_shift(const layout<T>& l, const context& ctx) {
-    if (not l.is_valid()) {
+    if (not l.is_valid()) [[unlikely]] {
       throw_invalid(ctx.operation, "invalid layout");
     }
-    if (not l.is_base_repetition()) {
+    if (not l.is_base_repetition()) [[unlikely]] {
       detail::fail_with<std::logic_error>(
           ctx.operation, std::source_location::current(),
           "repetition lowering requires the base_repetition fact");
@@ -689,7 +689,7 @@ namespace mp1::detail {
   // vector).  Only a layout that addresses bytes requires a non-null base.
   [[nodiscard]] const T* repetition_ptr(const T* p, const layout<T>& l, const context& ctx) {
     const count_t shift = repetition_shift(l, ctx);
-    if (l.byte_size() != 0 and p == nullptr) {
+    if (l.byte_size() != 0 and p == nullptr) [[unlikely]] {
       throw_invalid(ctx.operation, "null pointer for a non-empty layout");
     }
     if (p == nullptr or l.size() == 0 or shift == 0)
@@ -700,7 +700,7 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] T* repetition_ptr(T* p, const layout<T>& l, const context& ctx) {
     const count_t shift = repetition_shift(l, ctx);
-    if (l.byte_size() != 0 and p == nullptr) {
+    if (l.byte_size() != 0 and p == nullptr) [[unlikely]] {
       throw_invalid(ctx.operation, "null pointer for a non-empty layout");
     }
     if (p == nullptr or l.size() == 0 or shift == 0)
@@ -731,11 +731,11 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] identity_view<T> identity_view_of(const T* p, const layout<T>& l,
                                                   const context& ctx) {
-    if (not is_identity_repetition(l, ctx)) {
+    if (not is_identity_repetition(l, ctx)) [[unlikely]] {
       detail::fail_with<std::logic_error>(ctx.operation, std::source_location::current(),
                                           "identity lowering requires an identity repetition");
     }
-    if (l.size() != 0 and p == nullptr) {
+    if (l.size() != 0 and p == nullptr) [[unlikely]] {
       throw_invalid(ctx.operation, "null pointer for a non-empty layout");
     }
     return identity_view<T>{p, lowering_mpi_count(l.size(), ctx), datatype_info_of<T>().type};
@@ -746,7 +746,7 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] const T* staged_ptr(const T* p, const layout<T>& l, const context& ctx) {
     require_relative(l, ctx);
-    if (l.byte_size() != 0 and p == nullptr) {
+    if (l.byte_size() != 0 and p == nullptr) [[unlikely]] {
       throw_invalid(ctx.operation, "null pointer for a non-empty layout");
     }
     return p;
@@ -755,7 +755,7 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] T* staged_ptr(T* p, const layout<T>& l, const context& ctx) {
     require_relative(l, ctx);
-    if (l.byte_size() != 0 and p == nullptr) {
+    if (l.byte_size() != 0 and p == nullptr) [[unlikely]] {
       throw_invalid(ctx.operation, "null pointer for a non-empty layout");
     }
     return p;

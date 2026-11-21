@@ -136,9 +136,9 @@ namespace mp1 {
     inline void require_spawn_comm(const mpi_communicator& comm, int root, const context& ctx) {
       require_valid(comm, ctx);
       require_mpi(ctx);
-      if (comm.is_inter())
+      if (comm.is_inter()) [[unlikely]]
         throw_invalid(ctx.operation, "MPI_Comm_spawn requires an intracommunicator");
-      if (root < 0 or root >= comm.size()) {
+      if (root < 0 or root >= comm.size()) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "root {} is outside [0,{})", root, comm.size());
       }
@@ -250,7 +250,7 @@ namespace mp1 {
     /// input and throw before any MPI call.
     inline int* prepare_errcodes(std::span<const int> maxprocs, std::vector<int>& codes,
                                  count_t explicit_length) {
-      if (explicit_length < 0)
+      if (explicit_length < 0) [[unlikely]]
         throw_invalid("mp1::spawn", "negative errcodes length");
       std::size_t total = 0;
       if (explicit_length > 0) {
@@ -295,7 +295,7 @@ namespace mp1 {
       check_mpi(rc, "MPI_Comm_spawn");
       if (errcodes != nullptr)
         *errcodes = std::move(codes);
-      if (intercomm == MPI_COMM_NULL)
+      if (intercomm == MPI_COMM_NULL) [[unlikely]]
         detail::fail_with<std::runtime_error>(
             "mp1::spawn", std::source_location::current(),
             "MPI_Comm_spawn returned MPI_COMM_NULL after MPI_SUCCESS");
@@ -346,7 +346,7 @@ namespace mp1 {
       check_mpi(rc, "MPI_Comm_spawn_multiple");
       if (errcodes != nullptr)
         *errcodes = std::move(codes);
-      if (intercomm == MPI_COMM_NULL)
+      if (intercomm == MPI_COMM_NULL) [[unlikely]]
         detail::fail_with<std::runtime_error>(
             "mp1::spawn_multiple", std::source_location::current(),
             "MPI_Comm_spawn_multiple returned MPI_COMM_NULL after MPI_SUCCESS");

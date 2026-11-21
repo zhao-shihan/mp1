@@ -87,7 +87,7 @@ namespace mp1::detail {
     if (rank == MPI_PROC_NULL)
       return;
     const int size = w.group_size();
-    if (rank < 0 or rank >= size) {
+    if (rank < 0 or rank >= size) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "target rank {} is outside [0,{})", rank, size);
     }
@@ -95,7 +95,7 @@ namespace mp1::detail {
 
   inline void require_rma_peer_rank(const mpi_window& w, int rank, const context& ctx) {
     const int size = w.group_size();
-    if (rank < 0 or rank >= size) {
+    if (rank < 0 or rank >= size) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(
           ctx, std::source_location::current(),
           "target rank {} is outside [0,{}); MPI_PROC_NULL is not accepted by this call", rank,
@@ -105,7 +105,7 @@ namespace mp1::detail {
 
   inline void require_rma_target_disp(const mpi_window& w, MPI_Aint target_disp,
                                       const context& ctx) {
-    if (w.create_flavor() != MPI_WIN_FLAVOR_DYNAMIC and target_disp < 0) {
+    if (w.create_flavor() != MPI_WIN_FLAVOR_DYNAMIC and target_disp < 0) [[unlikely]] {
       throw_invalid(ctx.operation, "negative target_disp on a non-dynamic window");
     }
   }
@@ -118,7 +118,7 @@ namespace mp1::detail {
   template<class T>
   inline void require_non_overlapping_layout(const layout<T>& value, const context& ctx,
                                              const char* position) {
-    if (value.has_overlapping_entries()) {
+    if (value.has_overlapping_entries()) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(
           ctx, std::source_location::current(),
           "{} layout has overlapping type-map entries; MPI 4.1 §5.1.11 and §12.3.4 make a "
@@ -142,8 +142,8 @@ namespace mp1::detail {
   inline void require_rma_cas_datatype(const context& ctx) {
     const rma_datatype_category category = require_rma_atomic_datatype<T>(ctx);
     if (category != rma_datatype_category::c_integer and
-        category != rma_datatype_category::logical and
-        category != rma_datatype_category::byte) {
+        category != rma_datatype_category::logical and category != rma_datatype_category::byte)
+        [[unlikely]] {
       detail::fail_as<std::invalid_argument>(
           ctx, std::source_location::current(),
           "MPI_Compare_and_swap requires a predefined C++ datatype in the C integer, Logical "
@@ -180,7 +180,7 @@ namespace mp1::detail {
     // MPI_DATATYPE_NULL has no envelope: MPI_Type_get_envelope_c is erroneous for it and
     // aborts under the default error handler.  The one-time validator treats that annotation
     // as invalid instead of asking the provider about the null handle.
-    if (type == MPI_DATATYPE_NULL)
+    if (type == MPI_DATATYPE_NULL) [[unlikely]]
       throw_invalid("custom datatype validation", "MPI_DATATYPE_NULL is not a valid datatype");
     require_mpi("mp1: custom datatype validation");
     rma_datatype_contents value;
@@ -471,7 +471,7 @@ namespace mp1::detail {
   inline void require_rma_custom_homogeneous(const context& ctx) {
     if constexpr (component_info<std::remove_cv_t<T>>::runtime_validate) {
       static const bool homogeneous = rma_committed_datatype_is_homogeneous<T>();
-      if (not homogeneous) {
+      if (not homogeneous) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "custom/manual homogeneous annotation for {} claims basic component {}, but the "
@@ -518,7 +518,8 @@ namespace mp1::detail {
                                                   count_t elements, const context& ctx) {
     if (origin == nullptr or result == nullptr or elements <= 0)
       return;
-    if (rma_byte_ranges_overlap(origin, result, rma_flat_byte_extent(elements, sizeof(T)))) {
+    if (rma_byte_ranges_overlap(origin, result, rma_flat_byte_extent(elements, sizeof(T))))
+        [[unlikely]] {
       throw_invalid(
           ctx.operation,
           "origin and result buffers overlap; MPI 4.1 §12.3.4 requires them to be disjoint");
@@ -722,7 +723,7 @@ namespace mp1::detail {
     view.rank = target_rank;
     view.disp = target_disp;
     if (target_layout != nullptr) {
-      if (not target_layout->is_valid())
+      if (not target_layout->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid target layout");
       if (target_is_updated)
         require_non_overlapping_layout(*target_layout, ctx, "target");
@@ -730,7 +731,7 @@ namespace mp1::detail {
       view.count = 1;
       view.elements = target_layout->size();
     } else {
-      if (target_count < 0)
+      if (target_count < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative target count");
       const MPI_Count count = checked_mpi_count(target_count, ctx);
       view.type = datatype_info_of<T>().type;
@@ -761,13 +762,13 @@ namespace mp1::detail {
       view.data = rma_dummy_buffer();
       return view;
     }
-    if (origin.data == nullptr and origin.elements > 0) {
+    if (origin.data == nullptr and origin.elements > 0) [[unlikely]] {
       throw_invalid(ctx.operation, "null origin buffer");
     }
     if (origin.map != nullptr) {
-      if (not origin.map->is_valid())
+      if (not origin.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid origin layout");
-      if (origin.map->size() != target_elements) {
+      if (origin.map->size() != target_elements) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "origin layout has {} elements, target has {}",
                                                origin.map->size(), target_elements);
@@ -775,7 +776,7 @@ namespace mp1::detail {
       view.type = origin.map->native_handle();
       view.count = 1;
     } else {
-      if (origin.elements != target_elements) {
+      if (origin.elements != target_elements) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "origin span has {} elements, target has {}",
                                                origin.elements, target_elements);
@@ -798,13 +799,13 @@ namespace mp1::detail {
                                                    const context& ctx) {
     rma_result_view view;
     view.elements = target_elements;
-    if (result.data == nullptr and target_elements > 0)
+    if (result.data == nullptr and target_elements > 0) [[unlikely]]
       throw_invalid(ctx.operation, "null result buffer");
     if (result.map != nullptr) {
-      if (not result.map->is_valid())
+      if (not result.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid result layout");
       require_non_overlapping_layout(*result.map, ctx, "result");
-      if (result.map->size() != target_elements) {
+      if (result.map->size() != target_elements) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "result layout has {} elements, target has {}",
                                                result.map->size(), target_elements);
@@ -812,7 +813,7 @@ namespace mp1::detail {
       view.type = result.map->native_handle();
       view.count = 1;
     } else {
-      if (result.elements != target_elements) {
+      if (result.elements != target_elements) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "result span has {} elements, target has {}",
                                                result.elements, target_elements);
@@ -1144,11 +1145,11 @@ namespace mp1::detail {
     require_rma_cas_datatype<T>(ctx);
     const rma_target_view target =
         prepare_rma_target<T>(w, target_rank, target_disp, 1, nullptr, true, ctx);
-    if (origin == nullptr)
+    if (origin == nullptr) [[unlikely]]
       throw_invalid(ctx.operation, "null origin buffer");
-    if (compare == nullptr)
+    if (compare == nullptr) [[unlikely]]
       throw_invalid(ctx.operation, "null compare buffer");
-    if (result == nullptr)
+    if (result == nullptr) [[unlikely]]
       throw_invalid(ctx.operation, "null result buffer");
     // §12.3.4 (Compare and Swap) makes only origin and result disjoint; compare_addr is a
     // separate read-only input and may alias either of them.
@@ -1178,9 +1179,9 @@ namespace mp1::detail {
     // MPI_NO_OP ignores the origin arguments (§12.3.4), so a null origin is the atomic-read
     // spelling and a real origin (even one aliasing the result) is equally legal: normalize
     // every ignored origin to the dummy buffer exactly like get_accumulate/rget_accumulate.
-    if (origin == nullptr and op != MPI_NO_OP)
+    if (origin == nullptr and op != MPI_NO_OP) [[unlikely]]
       throw_invalid(ctx.operation, "null origin buffer");
-    if (result == nullptr)
+    if (result == nullptr) [[unlikely]]
       throw_invalid(ctx.operation, "null result buffer");
     const bool origin_ignored = op == MPI_NO_OP;
     if (not origin_ignored)

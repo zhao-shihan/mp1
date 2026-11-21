@@ -41,7 +41,7 @@ namespace mp1::detail {
     int flag{0};
     check_mpi(MPI_Win_get_attr(handle, MPI_WIN_BASE, &base, &flag),
               "MPI_Win_get_attr(MPI_WIN_BASE)");
-    if (flag == 0)
+    if (flag == 0) [[unlikely]]
       detail::fail_with<std::runtime_error>("mp1::mpi_window", std::source_location::current(),
                                             "MPI_WIN_BASE is not set");
     metadata.base = base;
@@ -49,7 +49,7 @@ namespace mp1::detail {
     MPI_Aint* size{nullptr};
     check_mpi(MPI_Win_get_attr(handle, MPI_WIN_SIZE, &size, &flag),
               "MPI_Win_get_attr(MPI_WIN_SIZE)");
-    if (flag == 0)
+    if (flag == 0) [[unlikely]]
       detail::fail_with<std::runtime_error>("mp1::mpi_window", std::source_location::current(),
                                             "MPI_WIN_SIZE is not set");
     metadata.byte_size = *size;
@@ -57,7 +57,7 @@ namespace mp1::detail {
     int* unit{nullptr};
     check_mpi(MPI_Win_get_attr(handle, MPI_WIN_DISP_UNIT, &unit, &flag),
               "MPI_Win_get_attr(MPI_WIN_DISP_UNIT)");
-    if (flag == 0)
+    if (flag == 0) [[unlikely]]
       detail::fail_with<std::runtime_error>("mp1::mpi_window", std::source_location::current(),
                                             "MPI_WIN_DISP_UNIT is not set");
     metadata.disp_unit = *unit;
@@ -65,7 +65,7 @@ namespace mp1::detail {
     int* flavor{nullptr};
     check_mpi(MPI_Win_get_attr(handle, MPI_WIN_CREATE_FLAVOR, &flavor, &flag),
               "MPI_Win_get_attr(MPI_WIN_CREATE_FLAVOR)");
-    if (flag == 0)
+    if (flag == 0) [[unlikely]]
       detail::fail_with<std::runtime_error>("mp1::mpi_window", std::source_location::current(),
                                             "MPI_WIN_CREATE_FLAVOR is not set");
     metadata.create_flavor = *flavor;
@@ -73,7 +73,7 @@ namespace mp1::detail {
     int* model{nullptr};
     check_mpi(MPI_Win_get_attr(handle, MPI_WIN_MODEL, &model, &flag),
               "MPI_Win_get_attr(MPI_WIN_MODEL)");
-    if (flag == 0)
+    if (flag == 0) [[unlikely]]
       detail::fail_with<std::runtime_error>("mp1::mpi_window", std::source_location::current(),
                                             "MPI_WIN_MODEL is not set");
     metadata.memory_model = *model;
@@ -97,7 +97,7 @@ namespace mp1::detail {
 
   /// The one validity precondition used by every cached accessor.
   inline void require_window_valid(bool valid, const context& ctx) {
-    if (not valid)
+    if (not valid) [[unlikely]]
       throw_invalid(ctx.operation, "invalid window");
   }
 
@@ -110,7 +110,7 @@ namespace mp1::detail {
   /// Dynamic-window precondition: valid, active MPI, and MPI_WIN_FLAVOR_DYNAMIC.
   inline void require_window_dynamic(bool valid, int create_flavor, const context& ctx) {
     require_window_active(valid, ctx);
-    if (create_flavor != MPI_WIN_FLAVOR_DYNAMIC)
+    if (create_flavor != MPI_WIN_FLAVOR_DYNAMIC) [[unlikely]]
       throw_invalid(ctx.operation, "window is not dynamic");
   }
 
@@ -118,13 +118,13 @@ namespace mp1::detail {
   inline void require_window_factory_operand(const mpi_communicator& comm, const context& ctx) {
     require_valid(comm, ctx);
     require_mpi(ctx);
-    if (comm.is_inter())
+    if (comm.is_inter()) [[unlikely]]
       throw_invalid(ctx.operation, "intercommunicator is not supported");
   }
 
   /// Factory preconditions: size is a non-negative byte count.
   inline void require_window_size(MPI_Aint size, const context& ctx) {
-    if (size < 0) {
+    if (size < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "size {} is negative",
                                              static_cast<long long>(size));
@@ -133,7 +133,7 @@ namespace mp1::detail {
 
   /// Factory preconditions: disp_unit is positive.
   inline void require_window_disp_unit(int disp_unit, const context& ctx) {
-    if (disp_unit <= 0) {
+    if (disp_unit <= 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "disp_unit {} is not positive", disp_unit);
     }

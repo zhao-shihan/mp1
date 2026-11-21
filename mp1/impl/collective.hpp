@@ -215,7 +215,7 @@ namespace mp1 {
           case repack_mode::pack_single:
             stage_pack_blocks(repack_source, *repack_layout, 1, send_stage, 0, ctx);
             return;
-          default:
+          [[unlikely]] default:
             // The mode is internal and closed over the cases above; an unknown value means
             // the plan was corrupted, never a silently skipped re-pack.
             throw_invalid(ctx.operation, "invalid persistent-reduction repack mode");
@@ -1206,7 +1206,7 @@ namespace mp1 {
 
     [[nodiscard]] inline std::vector<MPI_Count> reduction_wire_counts(
         std::span<const count_t> recvcounts, int local_size, const context& ctx) {
-      if (recvcounts.size() != static_cast<std::size_t>(local_size)) {
+      if (recvcounts.size() != static_cast<std::size_t>(local_size)) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "recvcounts length {} does not match the local size {}", recvcounts.size(),
@@ -1215,7 +1215,7 @@ namespace mp1 {
       std::vector<MPI_Count> result;
       result.reserve(recvcounts.size());
       for (const count_t value : recvcounts) {
-        if (value < 0)
+        if (value < 0) [[unlikely]]
           throw_invalid(ctx.operation, "negative receive count");
         result.push_back(static_cast<MPI_Count>(value));
       }
@@ -1231,7 +1231,7 @@ namespace mp1 {
     }
 
     inline void require_typed_layout(const auto& position, const context& ctx) {
-      if (position.typed and not position.map->is_valid())
+      if (position.typed and not position.map->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid layout");
     }
 
@@ -1295,7 +1295,7 @@ namespace mp1 {
       if (in_place) {
         n = recv_elements;
       } else if (sides.send_used and sides.recv_used) {
-        if (send_elements != recv_elements) {
+        if (send_elements != recv_elements) [[unlikely]] {
           throw_invalid(ctx.operation, "send and receive block sizes differ");
         }
         n = send_elements;
@@ -1309,7 +1309,7 @@ namespace mp1 {
         // stays uniform across the participating ranks instead of reading the dummy 0.
         n = send_elements;
       }
-      if (n < 0)
+      if (n < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative count");
 
       reduction_plan<T> plan;
@@ -1467,7 +1467,7 @@ namespace mp1 {
 
       const count_t send_elements = send.element_count();
       const count_t recv_elements = recv.element_count();
-      if (send_elements != recv_elements) {
+      if (send_elements != recv_elements) [[unlikely]] {
         throw_invalid(ctx.operation, "send and receive block sizes differ");
       }
       const count_t n = send_elements;
@@ -1577,7 +1577,7 @@ namespace mp1 {
       const count_t send_elements = send.element_count();
       const count_t recv_elements = recv.element_count();
       const auto require_size = [ctx](count_t actual, count_t expected, const char* side) {
-        if (actual != expected) {
+        if (actual != expected) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(
               ctx, std::source_location::current(),
               "{} buffer has {} elements but the counts require {}", side, actual, expected);
@@ -1697,7 +1697,7 @@ namespace mp1 {
       require_reduction_base<T>(ctx);
       require_typed_layout(send, ctx);
       require_typed_layout(recv, ctx);
-      if (recvcount < 0)
+      if (recvcount < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative count");
       const bool in_place = send.in_place;
       (void)resolve_sides(collective_family::reduce_scatter_block, c, 0,
@@ -1713,7 +1713,7 @@ namespace mp1 {
       const count_t send_elements = send.element_count();
       const count_t recv_elements = recv.element_count();
       const auto require_size = [ctx](count_t actual, count_t expected, const char* side) {
-        if (actual != expected) {
+        if (actual != expected) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(
               ctx, std::source_location::current(),
               "{} buffer has {} elements but the count requires {}", side, actual, expected);

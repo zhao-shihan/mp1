@@ -41,7 +41,7 @@ namespace mp1 {
 
     inline int error_class_of(int code) noexcept {
       int error_class = code;
-      if (MPI_Error_class(code, &error_class) != MPI_SUCCESS)
+      if (MPI_Error_class(code, &error_class) != MPI_SUCCESS) [[unlikely]]
         error_class = code;
       return error_class;
     }
@@ -49,7 +49,7 @@ namespace mp1 {
     inline std::string error_string_of(int code) {
       char buffer[MPI_MAX_ERROR_STRING + 1] = {};
       int length{0};
-      if (MPI_Error_string(code, buffer, &length) != MPI_SUCCESS)
+      if (MPI_Error_string(code, buffer, &length) != MPI_SUCCESS) [[unlikely]]
         return std::string{"MPI error "} + std::to_string(code);
       length = std::max(length, 0);
       if (length > MPI_MAX_ERROR_STRING)
@@ -223,7 +223,7 @@ namespace mp1 {
   template<class... Args>
   void require(bool condition, const context& ctx, std::source_location where,
                std::format_string<Args...> format, Args&&... args) {
-    if (not condition)
+    if (not condition) [[unlikely]]
       throw std::invalid_argument{
           detail::format_message(ctx.operation, where, format, std::forward<Args>(args)...)};
   }

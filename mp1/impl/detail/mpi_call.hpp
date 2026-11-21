@@ -117,7 +117,7 @@ namespace mp1::detail {
     auto& phase = lifecycle_phase_word();
     lifecycle_phase expected = lifecycle_phase::idle;
     int level = MPI_THREAD_SINGLE;
-    if (MPI_Query_thread(&level) != MPI_SUCCESS)
+    if (MPI_Query_thread(&level) != MPI_SUCCESS) [[unlikely]]
       level = MPI_THREAD_SINGLE;
     provided_thread_level().store(level, std::memory_order_release);
     if (phase.compare_exchange_strong(expected, lifecycle_phase::active_adopted,
@@ -138,7 +138,9 @@ namespace mp1::detail {
   inline bool mpi_active_fast() noexcept {
     const lifecycle_phase phase = lifecycle_phase_word().load(std::memory_order_acquire);
     if (phase == lifecycle_phase::active_owned or phase == lifecycle_phase::active_adopted)
+        [[likely]] {
       return true;
+    }
     if (phase != lifecycle_phase::idle)
       return false;
     if (mpi_finalized()) {
@@ -164,9 +166,9 @@ namespace mp1::detail {
   inline bool mpi_active_checked() noexcept {
     const lifecycle_phase phase = lifecycle_phase_word().load(std::memory_order_acquire);
     switch (phase) {
-      case lifecycle_phase::finalizing:
-      case lifecycle_phase::finalized:
-      case lifecycle_phase::init_failed:
+      [[unlikely]] case lifecycle_phase::finalizing:
+      [[unlikely]] case lifecycle_phase::finalized:
+      [[unlikely]] case lifecycle_phase::init_failed:
         return false;
       case lifecycle_phase::active_owned:
       case lifecycle_phase::active_adopted:
@@ -183,7 +185,7 @@ namespace mp1::detail {
         if (not mpi_initialized())
           return false;
         return publish_adoption();
-      case lifecycle_phase::initializing:
+      [[unlikely]] case lifecycle_phase::initializing:
         // The transition is still in progress, so the phase does not yet prove
         // initialization: keep observing both queries as before.
         if (mpi_finalized()) {
@@ -242,7 +244,7 @@ namespace mp1::detail {
   /// Operation precondition: MPI is active.  One acquire load on the settled fast path.
   inline void require_mpi(const context& ctx,
                           std::source_location where = std::source_location::current()) {
-    if (not mpi_active_fast())
+    if (not mpi_active_fast()) [[unlikely]]
       throw_not_active(ctx, where);
   }
 
@@ -250,7 +252,7 @@ namespace mp1::detail {
   /// observes an external finalize before the MPI call.
   inline void require_mpi_checked(
       const context& ctx, std::source_location where = std::source_location::current()) {
-    if (not mpi_active_checked())
+    if (not mpi_active_checked()) [[unlikely]]
       throw_not_active(ctx, where);
   }
 
@@ -270,7 +272,7 @@ namespace mp1::detail {
   [[nodiscard]] inline count_t checked_count(
       MPI_Count count, const context& ctx,
       std::source_location where = std::source_location::current()) {
-    if (not std::in_range<count_t>(count)) {
+    if (not std::in_range<count_t>(count)) [[unlikely]] {
       detail::fail_as<std::overflow_error>(ctx, where,
                                            "MPI count {} does not fit std::ptrdiff_t",
                                            static_cast<long long>(count));
@@ -281,7 +283,7 @@ namespace mp1::detail {
   [[nodiscard]] inline int checked_int(
       std::size_t size, const context& ctx,
       std::source_location where = std::source_location::current()) {
-    if (not std::in_range<int>(size)) {
+    if (not std::in_range<int>(size)) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, where, "size {} does not fit int", size);
     }
     return static_cast<int>(size);
@@ -290,7 +292,7 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_Count checked_mpi_count(
       count_t count, const context& ctx,
       std::source_location where = std::source_location::current()) {
-    if (count < 0) {
+    if (count < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, where, "count {} is negative", count);
     }
     return static_cast<MPI_Count>(count);
@@ -320,7 +322,7 @@ namespace mp1::detail {
       MPI_Aint high, MPI_Aint low, const context& ctx,
       std::source_location where = std::source_location::current()) {
     const MPI_Aint difference = MPI_Aint_diff(high, low);
-    if (MPI_Aint_add(low, difference) != high) {
+    if (MPI_Aint_add(low, difference) != high) [[unlikely]] {
       detail::fail_as<std::overflow_error>(ctx, where,
                                            "MPI address difference is not representable");
     }
@@ -331,10 +333,10 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_Aint checked_address_add(
       MPI_Aint base, count_t displacement, const context& ctx,
       std::source_location where = std::source_location::current()) {
-    if (displacement < 0) {
+    if (displacement < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, where, "negative MPI address displacement");
     }
-    if (not std::in_range<MPI_Aint>(displacement)) {
+    if (not std::in_range<MPI_Aint>(displacement)) [[unlikely]] {
       detail::fail_as<std::overflow_error>(ctx, where,
                                            "MPI address displacement does not fit MPI_Aint");
     }
@@ -345,7 +347,7 @@ namespace mp1::detail {
       count_t left, count_t right, const context& ctx,
       std::source_location where = std::source_location::current()) {
     if ((right > 0 and left > std::numeric_limits<count_t>::max() - right) or
-        (right < 0 and left < std::numeric_limits<count_t>::min() - right)) {
+        (right < 0 and left < std::numeric_limits<count_t>::min() - right)) [[unlikely]] {
       detail::fail_as<std::overflow_error>(ctx, where, "count overflow");
     }
     return left + right;
@@ -355,7 +357,7 @@ namespace mp1::detail {
       count_t left, count_t right, const context& ctx,
       std::source_location where = std::source_location::current()) {
     if ((right > 0 and left < std::numeric_limits<count_t>::min() + right) or
-        (right < 0 and left > std::numeric_limits<count_t>::max() + right)) {
+        (right < 0 and left > std::numeric_limits<count_t>::max() + right)) [[unlikely]] {
       detail::fail_as<std::overflow_error>(ctx, where, "count overflow");
     }
     return left - right;
@@ -366,10 +368,10 @@ namespace mp1::detail {
   [[nodiscard]] inline count_t checked_count_mul(
       count_t left, count_t right, const context& ctx,
       std::source_location where = std::source_location::current()) {
-    if (left < 0 or right < 0) {
+    if (left < 0 or right < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, where, "negative count in size computation");
     }
-    if (left != 0 and right > std::numeric_limits<count_t>::max() / left) {
+    if (left != 0 and right > std::numeric_limits<count_t>::max() / left) [[unlikely]] {
       detail::fail_as<std::overflow_error>(ctx, where, "element count overflow");
     }
     return left * right;
@@ -388,7 +390,7 @@ namespace mp1::detail {
       handle = null_value;
       return;
     }
-    if (not mpi_active()) {
+    if (not mpi_active()) [[unlikely]] {
       note_abandoned_handle();
       handle = null_value;
       return;

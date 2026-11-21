@@ -146,7 +146,7 @@ namespace mp1 {
   /// rank must be a valid rank of the window group (MPI_PROC_NULL is not accepted by mp1).
   inline void lock(const mpi_window& w, lock_type type, int rank, int assert = 0) {
     detail::require_rma_window(w, "mp1::lock");
-    if (type != lock_type::exclusive and type != lock_type::shared) {
+    if (type != lock_type::exclusive and type != lock_type::shared) [[unlikely]] {
       throw_invalid("mp1::lock", "invalid lock_type");
     }
     detail::require_rma_peer_rank(w, rank, "mp1::lock");
@@ -218,7 +218,7 @@ namespace mp1 {
   /// matching posts have been made.
   inline void post(const mpi_window& w, const group& gr, int assert = 0) {
     detail::require_rma_window(w, "mp1::post");
-    if (not gr.is_valid())
+    if (not gr.is_valid()) [[unlikely]]
       throw_invalid("mp1::post", "invalid group");
     detail::check_mpi(MPI_Win_post(gr.native_handle(), assert, w.native_handle()),
                       {"MPI_Win_post"});
@@ -228,7 +228,7 @@ namespace mp1 {
   /// posts have been made.
   inline void start(const mpi_window& w, const group& gr, int assert = 0) {
     detail::require_rma_window(w, "mp1::start");
-    if (not gr.is_valid())
+    if (not gr.is_valid()) [[unlikely]]
       throw_invalid("mp1::start", "invalid group");
     detail::check_mpi(MPI_Win_start(gr.native_handle(), assert, w.native_handle()),
                       {"MPI_Win_start"});

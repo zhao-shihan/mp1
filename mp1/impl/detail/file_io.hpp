@@ -116,18 +116,19 @@ namespace mp1::detail {
   // SEQUENTIAL is erroneous with RDWR. amode is uniform, so a local throw is collective-safe.
   inline void validate_file_amode(int amode, const context& ctx) {
     const int access = amode & (MPI_MODE_RDONLY | MPI_MODE_RDWR | MPI_MODE_WRONLY);
-    if (access == 0) {
+    if (access == 0) [[unlikely]] {
       throw_invalid(ctx.operation,
                     "exactly one of read_only, read_write or write_only is required");
     }
-    if ((access & (access - 1)) != 0) {
+    if ((access & (access - 1)) != 0) [[unlikely]] {
       throw_invalid(ctx.operation,
                     "exactly one of read_only, read_write or write_only may be set");
     }
-    if ((amode & MPI_MODE_RDONLY) != 0 and (amode & (MPI_MODE_CREATE | MPI_MODE_EXCL)) != 0) {
+    if ((amode & MPI_MODE_RDONLY) != 0 and (amode & (MPI_MODE_CREATE | MPI_MODE_EXCL)) != 0)
+        [[unlikely]] {
       throw_invalid(ctx.operation, "create/no_replace are erroneous with read_only");
     }
-    if ((amode & MPI_MODE_SEQUENTIAL) != 0 and (amode & MPI_MODE_RDWR) != 0) {
+    if ((amode & MPI_MODE_SEQUENTIAL) != 0 and (amode & MPI_MODE_RDWR) != 0) [[unlikely]] {
       throw_invalid(ctx.operation, "sequential is erroneous with read_write");
     }
   }
@@ -150,7 +151,7 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_File require_file(const std::shared_ptr<file_state>& state,
                                              const context& ctx) {
     require_mpi(ctx);
-    if (not state or state->handle == MPI_FILE_NULL)
+    if (not state or state->handle == MPI_FILE_NULL) [[unlikely]]
       detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
                                             "file is not open");
     return state->handle;
@@ -163,11 +164,11 @@ namespace mp1::detail {
   // require_collective_file_during_split below.
   inline void require_no_split(const file_state& state, const context& ctx) {
     switch (state.split.phase) {
-      case split_phase::active:
+      [[unlikely]] case split_phase::active:
         detail::fail_with<std::runtime_error>(
             ctx.operation, std::source_location::current(),
             "collective file operation during a split collective");
-      case split_phase::unknown:
+      [[unlikely]] case split_phase::unknown:
         detail::fail_with<std::runtime_error>(
             ctx.operation, std::source_location::current(),
             "split collective state is unknown after a failed begin/end");
@@ -188,7 +189,7 @@ namespace mp1::detail {
   // outstanding nonblocking operations.
   inline void require_no_pending_requests(const file_state& state, const context& ctx) {
     const count_t pending = state.pending_requests.load(std::memory_order_relaxed);
-    if (pending != 0) {
+    if (pending != 0) [[unlikely]] {
       detail::fail_as<std::runtime_error>(ctx, std::source_location::current(),
                                           "{} outstanding nonblocking file request(s); wait, "
                                           "test or release them before proceeding",
@@ -200,7 +201,7 @@ namespace mp1::detail {
   // are erroneous on a sequential file; shared-pointer access is the only permitted family.
   inline void require_sequential_ok(const file_state& state, bool sequential_ok,
                                     const context& ctx) {
-    if (not sequential_ok and amode_sequential(state.amode)) {
+    if (not sequential_ok and amode_sequential(state.amode)) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx.operation, std::source_location::current(),
           "operation is not permitted on a file opened with access_mode::sequential");
@@ -238,7 +239,7 @@ namespace mp1::detail {
                                                     bool collective, bool writes,
                                                     bool sequential_ok, const context& ctx) {
     MPI_File handle = require_file(state, ctx);
-    if (writes ? not amode_writes(state->amode) : not amode_reads(state->amode)) {
+    if (writes ? not amode_writes(state->amode) : not amode_reads(state->amode)) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx, std::source_location::current(),
           writes ? "the file access mode does not permit writing"
@@ -336,18 +337,18 @@ namespace mp1::detail {
     // collective guard, which would report "collective during a split" instead of "another
     // split is already active".
     MPI_File handle = require_data_access(state, false, writes, sequential_ok, ctx);
-    if (state->split.phase == split_phase::active) {
+    if (state->split.phase == split_phase::active) [[unlikely]] {
       detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
                                             "another split collective is already active");
     }
-    if (state->split.phase == split_phase::unknown) {
+    if (state->split.phase == split_phase::unknown) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx.operation, std::source_location::current(),
           "split collective state is unknown after a failed begin/end");
     }
     check_etype<T>(*state, ctx);
     const int rc = std::forward<Call>(call)(handle);
-    if (rc != MPI_SUCCESS) {
+    if (rc != MPI_SUCCESS) [[unlikely]] {
       state->split.reset();
       state->split.phase = split_phase::unknown;
       check_file(rc, ctx);
@@ -367,32 +368,32 @@ namespace mp1::detail {
   // multithreaded implementation). Throws std::runtime_error before any MPI call on mismatch.
   inline void require_split_end(const std::shared_ptr<file_state>& state, split_kind kind,
                                 const void* buffer, const context& ctx) {
-    if (not state or state->handle == MPI_FILE_NULL)
+    if (not state or state->handle == MPI_FILE_NULL) [[unlikely]]
       detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
                                             "file is not open");
     switch (state->split.phase) {
-      case split_phase::none:
+      [[unlikely]] case split_phase::none:
         detail::fail_with<std::runtime_error>(
             ctx.operation, std::source_location::current(),
             "no split collective is active (end without a matching begin, or double end)");
-      case split_phase::unknown:
+      [[unlikely]] case split_phase::unknown:
         detail::fail_with<std::runtime_error>(
             ctx.operation, std::source_location::current(),
             "split collective state is unknown after a failed begin/end");
       case split_phase::active:
         break;
     }
-    if (state->split.kind != kind) {
+    if (state->split.kind != kind) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx.operation, std::source_location::current(),
           "split collective end does not match the begun operation");
     }
-    if (state->split.buffer != buffer) {
+    if (state->split.buffer != buffer) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx.operation, std::source_location::current(),
           "split collective end buffer differs from the begin buffer");
     }
-    if (not(state->split.thread == current_thread_token())) {
+    if (not(state->split.thread == current_thread_token())) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx.operation, std::source_location::current(),
           "split collective begin and end must be called from the same thread");
@@ -408,7 +409,7 @@ namespace mp1::detail {
     MPI_Status native{};
     const MPI_File handle = state->handle;
     const int rc = std::forward<EndCall>(call)(handle, &native);
-    if (rc != MPI_SUCCESS) {
+    if (rc != MPI_SUCCESS) [[unlikely]] {
       state->split.reset();
       state->split.phase = split_phase::unknown;
       check_file(rc, ctx);
@@ -439,7 +440,7 @@ namespace mp1::detail {
         return MPI_File_read_ordered_end(handle, mutable_buffer, &native);
       case split_kind::write_ordered:
         return MPI_File_write_ordered_end(handle, buffer, &native);
-      case split_kind::none:
+      [[unlikely]] case split_kind::none:
         return MPI_ERR_UNKNOWN;
     }
     return MPI_ERR_UNKNOWN;
@@ -452,9 +453,9 @@ namespace mp1::detail {
   inline void require_file_layout(const layout<T>& filetype, const T* data,
                                   const context& ctx) {
     require_file_data_type<T>();
-    if (not filetype.is_valid())
+    if (not filetype.is_valid()) [[unlikely]]
       throw_invalid(ctx.operation, "invalid layout");
-    if (data == nullptr and filetype.byte_size() != 0) {
+    if (data == nullptr and filetype.byte_size() != 0) [[unlikely]] {
       throw_invalid(ctx.operation, "null data pointer for a non-empty layout");
     }
   }
@@ -468,7 +469,7 @@ namespace mp1::detail {
   inline void require_file_read_layout(const layout<T>& filetype, const T* data,
                                        const context& ctx) {
     require_file_layout(filetype, data, ctx);
-    if (filetype.has_overlapping_entries()) {
+    if (filetype.has_overlapping_entries()) [[unlikely]] {
       throw_invalid(
           ctx.operation,
           "the per-call read layout contains overlapping typemap regions; MPI 4.1 §5.1.11 "
@@ -510,7 +511,7 @@ namespace mp1::detail {
                                          const context& ctx) {
     // The true lower bound is the minimum typemap address: a negative value proves a negative
     // displacement even when the map cannot be decoded.
-    if (filetype.true_byte_lower_bound() < 0) {
+    if (filetype.true_byte_lower_bound() < 0) [[unlikely]] {
       throw_invalid(ctx.operation,
                     "file view filetype has a negative typemap displacement; MPI 4.1 §14.3 "
                     "requires all filetype displacements to be nonnegative and monotonically "
@@ -522,13 +523,13 @@ namespace mp1::detail {
       MPI_Aint previous_begin = 0;
       bool have_previous = false;
       for (const type_map_interval& interval : intervals) {
-        if (interval.begin < 0) {
+        if (interval.begin < 0) [[unlikely]] {
           throw_invalid(ctx.operation,
                         "file view filetype has a negative typemap displacement; MPI 4.1 "
                         "§14.3 requires all filetype displacements to be nonnegative and "
                         "monotonically nondecreasing");
         }
-        if (have_previous and interval.begin < previous_begin) {
+        if (have_previous and interval.begin < previous_begin) [[unlikely]] {
           throw_invalid(ctx.operation,
                         "file view filetype has a descending typemap displacement; MPI 4.1 "
                         "§14.3 requires all filetype displacements to be nonnegative and "
@@ -562,7 +563,7 @@ namespace mp1::detail {
   // ---------------------------------------------------------------------------------------
 
   [[nodiscard]] inline count_t file_dense_size(std::size_t size, const context& ctx) {
-    if (size > static_cast<std::size_t>(std::numeric_limits<count_t>::max())) {
+    if (size > static_cast<std::size_t>(std::numeric_limits<count_t>::max())) [[unlikely]] {
       detail::fail_with<std::overflow_error>(
           ctx.operation, std::source_location::current(),
           "container size does not fit the element count type");
@@ -585,7 +586,7 @@ namespace mp1::detail {
 
   template<class T>
   [[nodiscard]] inline T* file_dense_recv_buffer(T* data, MPI_Count count, const context& ctx) {
-    if (data == nullptr and count != 0) {
+    if (data == nullptr and count != 0) [[unlikely]] {
       throw_invalid(ctx.operation, "null data pointer with a positive count");
     }
     return file_nonnull_buffer(data);
@@ -594,7 +595,7 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] inline const T* file_dense_send_buffer(const T* data, MPI_Count count,
                                                        const context& ctx) {
-    if (data == nullptr and count != 0) {
+    if (data == nullptr and count != 0) [[unlikely]] {
       throw_invalid(ctx.operation, "null data pointer with a positive count");
     }
     return file_nonnull_buffer(data);
@@ -795,7 +796,7 @@ namespace mp1::detail {
   // ---------------------------------------------------------------------------------------
 
   inline void require_file_datarep(const char* datarep, const context& ctx) {
-    if (datarep == nullptr)
+    if (datarep == nullptr) [[unlikely]]
       throw_invalid(ctx.operation, "null data representation");
   }
 
@@ -805,16 +806,16 @@ namespace mp1::detail {
   inline void require_file_displacement(const file_state& state, MPI_Offset disp,
                                         const context& ctx) {
     const bool sequential = amode_sequential(state.amode);
-    if (sequential and disp != MPI_DISPLACEMENT_CURRENT) {
+    if (sequential and disp != MPI_DISPLACEMENT_CURRENT) [[unlikely]] {
       throw_invalid(ctx.operation,
                     "a sequential file requires MPI_DISPLACEMENT_CURRENT as the displacement");
     }
-    if (not sequential and disp == MPI_DISPLACEMENT_CURRENT) {
+    if (not sequential and disp == MPI_DISPLACEMENT_CURRENT) [[unlikely]] {
       throw_invalid(ctx.operation, "MPI_DISPLACEMENT_CURRENT requires access_mode::sequential");
     }
     // MPI_DISPLACEMENT_CURRENT is the one negative displacement (a sentinel, not a byte
     // position) and is legal only on a sequential file, handled above.
-    if (not sequential and disp < 0) {
+    if (not sequential and disp < 0) [[unlikely]] {
       throw_invalid(ctx.operation,
                     "the view displacement must be a nonnegative absolute byte offset");
     }
@@ -822,7 +823,7 @@ namespace mp1::detail {
 
   // MPI 4.1 §14.4.1: an explicit file offset is a nonnegative etype count relative to the view.
   inline void require_file_offset(MPI_Offset offset, const context& ctx) {
-    if (offset < 0) {
+    if (offset < 0) [[unlikely]] {
       throw_invalid(ctx.operation, "the file offset must be a nonnegative etype count");
     }
   }
@@ -845,35 +846,35 @@ namespace mp1::detail {
       state.reset();
       return;
     }
-    if (not mpi_active()) {
+    if (not mpi_active()) [[unlikely]] {
       abandon_file_handle(state);
       return;
     }
     if (state->split.phase == split_phase::active) {
       // MPI 4.1 section 14.4.5: begin and end must be called from the same thread. A
       // destructor running elsewhere cannot legally finish the split; abandon instead.
-      if (not(state->split.thread == current_thread_token())) {
+      if (not(state->split.thread == current_thread_token())) [[unlikely]] {
         abandon_file_handle(state);
         return;
       }
       const int rc = finish_split_noexcept(handle, state->split.kind, state->split.buffer);
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         abandon_file_handle(state);
         return;
       }
       state->split.reset();
-    } else if (state->split.phase == split_phase::unknown) {
+    } else if (state->split.phase == split_phase::unknown) [[unlikely]] {
       abandon_file_handle(state);
       return;
     }
-    if (state->pending_requests.load(std::memory_order_relaxed) != 0) {
+    if (state->pending_requests.load(std::memory_order_relaxed) != 0) [[unlikely]] {
       abandon_file_handle(state);
       return;
     }
     state->handle = MPI_FILE_NULL;
     const int rc = MPI_File_close(&handle);
     state.reset();
-    if (rc != MPI_SUCCESS)
+    if (rc != MPI_SUCCESS) [[unlikely]]
       note_abandoned_handle();
   }
 

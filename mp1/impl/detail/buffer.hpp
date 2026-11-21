@@ -136,7 +136,7 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_Count buffer_to_mpi_count(
       std::size_t size, const context& ctx,
       std::source_location where = std::source_location::current()) {
-    if (not std::in_range<MPI_Count>(size))
+    if (not std::in_range<MPI_Count>(size)) [[unlikely]]
       detail::fail_as<std::overflow_error>(ctx, where, "element count does not fit MPI_Count");
     return static_cast<MPI_Count>(size);
   }
@@ -144,7 +144,7 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_Count buffer_iterator_count(
       std::ptrdiff_t distance, const context& ctx,
       std::source_location where = std::source_location::current()) {
-    if (not std::in_range<std::size_t>(distance))
+    if (not std::in_range<std::size_t>(distance)) [[unlikely]]
       detail::fail_as<std::invalid_argument>(ctx, where, "negative iterator range");
     return buffer_to_mpi_count(static_cast<std::size_t>(distance), ctx, where);
   }
@@ -208,7 +208,7 @@ namespace mp1::detail {
                                                     bool ignored = false) {
     const MPI_Count mpi_count = checked_mpi_count(count, "mp1::send buffer");
     if (data == nullptr) {
-      if (count != 0 and not ignored) {
+      if (count != 0 and not ignored) [[unlikely]] {
         throw_invalid("mp1::send buffer", "null data pointer with a positive count");
       }
       data = static_cast<const T*>(dummy_buffer(buffer_slot::send));
@@ -221,7 +221,7 @@ namespace mp1::detail {
                                                             bool ignored = false) {
     const MPI_Count mpi_count = checked_mpi_count(capacity, "mp1::recv buffer");
     if (data == nullptr) {
-      if (capacity != 0 and not ignored) {
+      if (capacity != 0 and not ignored) [[unlikely]] {
         throw_invalid("mp1::recv buffer", "null data pointer with a positive capacity");
       }
       data = static_cast<T*>(dummy_buffer(buffer_slot::recv));
@@ -233,10 +233,10 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] inline buffer_view make_send_buffer(const T* data, const layout<T>& l,
                                                     bool ignored = false) {
-    if (not l.is_valid())
+    if (not l.is_valid()) [[unlikely]]
       throw_invalid("mp1::send buffer", "invalid layout");
     if (data == nullptr and l.byte_size() != 0) {
-      if (not ignored) {
+      if (not ignored) [[unlikely]] {
         throw_invalid("mp1::send buffer", "null data pointer with a non-empty layout");
       }
       data = static_cast<const T*>(dummy_buffer());
@@ -247,10 +247,10 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] inline mutable_buffer_view make_recv_buffer(T* data, const layout<T>& l,
                                                             bool ignored = false) {
-    if (not l.is_valid())
+    if (not l.is_valid()) [[unlikely]]
       throw_invalid("mp1::recv buffer", "invalid layout");
     if (data == nullptr and l.byte_size() != 0) {
-      if (not ignored) {
+      if (not ignored) [[unlikely]] {
         throw_invalid("mp1::recv buffer", "null data pointer with a non-empty layout");
       }
       data = static_cast<T*>(dummy_buffer());
@@ -325,10 +325,10 @@ namespace mp1::detail {
     static_assert(std::is_default_constructible_v<value_type>,
                   "mp1: capacity receive requires a default-constructible container element "
                   "(the container is resized before MPI writes into it)");
-    if (capacity < 0)
+    if (capacity < 0) [[unlikely]]
       throw_invalid("mp1::recv buffer", "negative container capacity");
     const std::size_t size = static_cast<std::size_t>(capacity);
-    if (size > data.max_size())
+    if (size > data.max_size()) [[unlikely]]
       throw_invalid("mp1::recv buffer", "container capacity exceeds max_size");
     data.resize(size);
     return {data.data(), checked_mpi_count(capacity, "mp1::recv buffer"),
@@ -377,7 +377,7 @@ namespace mp1::detail {
       element_type_ = base.type;
       if (first == last or base.size == 0)
         return;
-      if (base.extent != static_cast<count_t>(sizeof(T))) {
+      if (base.extent != static_cast<count_t>(sizeof(T))) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "the element datatype extent ({}) must equal "
                                                "sizeof(T) ({}) for the absolute-address "
@@ -399,7 +399,8 @@ namespace mp1::detail {
           run_length = 1;
           have_run = true;
         } else if (address == expected) {
-          if (run_length == static_cast<count_t>(std::numeric_limits<int>::max())) {
+          if (run_length == static_cast<count_t>(std::numeric_limits<int>::max()))
+              [[unlikely]] {
             detail::fail_as<std::invalid_argument>(
                 ctx, std::source_location::current(),
                 "more than INT_MAX contiguous elements in one block");
@@ -467,7 +468,8 @@ namespace mp1::detail {
   private:
     static void append_run(std::vector<int>& blocklengths, std::vector<MPI_Aint>& displacements,
                            MPI_Aint start, count_t length, const context& ctx) {
-      if (blocklengths.size() >= static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (blocklengths.size() >= static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "more than INT_MAX blocks in the absolute map");
       }

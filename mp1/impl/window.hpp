@@ -208,7 +208,7 @@ namespace mp1 {
     /// A null info is rejected locally.
     void set_info(const info& i) const {
       detail::require_window_active(is_valid(), "mp1::mpi_window::set_info");
-      if (i.native_handle() == MPI_INFO_NULL)
+      if (i.native_handle() == MPI_INFO_NULL) [[unlikely]]
         throw_invalid("mp1::mpi_window::set_info", "null info");
       detail::check_mpi(MPI_Win_set_info(handle_, i.native_handle()), "MPI_Win_set_info");
     }
@@ -223,10 +223,10 @@ namespace mp1 {
     [[nodiscard]] shared_segment shared_query(int rank) const {
       detail::require_window_valid(is_valid(), "mp1::mpi_window::shared_query");
       detail::require_mpi("mp1::mpi_window::shared_query");
-      if (create_flavor_ == MPI_WIN_FLAVOR_DYNAMIC) {
+      if (create_flavor_ == MPI_WIN_FLAVOR_DYNAMIC) [[unlikely]] {
         throw_invalid("mp1::mpi_window::shared_query", "not available for a dynamic window");
       }
-      if (rank != MPI_PROC_NULL and (rank < 0 or rank >= group_size_)) {
+      if (rank != MPI_PROC_NULL and (rank < 0 or rank >= group_size_)) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::mpi_window::shared_query"},
                                                std::source_location::current(),
                                                "rank {} is outside [0,{})", rank, group_size_);
@@ -252,7 +252,7 @@ namespace mp1 {
     /// that misuse cannot be diagnosed locally.
     void attach(void* base, MPI_Aint size) {
       detail::require_window_dynamic(is_valid(), create_flavor_, "mp1::mpi_window::attach");
-      if (size <= 0) {
+      if (size <= 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"mp1::mpi_window::attach"}, std::source_location::current(),
             "size {} is not positive; MPI 4.1 §12.2.4 permits a zero-size attach but it is not "
@@ -260,7 +260,7 @@ namespace mp1 {
             "non-empty regions",
             static_cast<long long>(size));
       }
-      if (base == nullptr) {
+      if (base == nullptr) [[unlikely]] {
         throw_invalid("mp1::mpi_window::attach",
                       "null base; a null-base attach has no portable detach (MPI_Win_detach "
                       "requires the same base and MPICH rejects null)");
@@ -274,7 +274,7 @@ namespace mp1 {
     /// detaching an address that was never attached is erroneous in MPI.
     void detach(const void* base) {
       detail::require_window_dynamic(is_valid(), create_flavor_, "mp1::mpi_window::detach");
-      if (base == nullptr) {
+      if (base == nullptr) [[unlikely]] {
         throw_invalid("mp1::mpi_window::detach",
                       "null base; MPI 4.1 §12.2.4 requires the base passed to a previous "
                       "MPI_Win_attach, and a null-base attach is rejected by mp1");
@@ -435,7 +435,7 @@ namespace mp1 {
       detail::require_window_factory_operand(comm, "mp1::window::create");
       detail::require_window_size(options.size, "mp1::window::create");
       detail::require_window_disp_unit(options.disp_unit, "mp1::window::create");
-      if (options.size > 0 and options.base == nullptr)
+      if (options.size > 0 and options.base == nullptr) [[unlikely]]
         throw_invalid("mp1::window::create", "null base for positive size");
       MPI_Win result{MPI_WIN_NULL};
       detail::check_mpi(
@@ -498,7 +498,7 @@ namespace mp1 {
     /// still owns the handle and no MPI_Win_free is called on it.
     [[nodiscard]] static window adopt(MPI_Win h) {
       detail::require_mpi("mp1::window::adopt");
-      if (h == MPI_WIN_NULL)
+      if (h == MPI_WIN_NULL) [[unlikely]]
         throw_invalid("mp1::window::adopt", "MPI_WIN_NULL");
       return window{h, adopt_handle_t{}};
     }
@@ -515,7 +515,7 @@ namespace mp1 {
       MPI_Win handle = native_handle();
       const int rc = MPI_Win_free(&handle);
       view_ = mpi_window{};
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         detail::note_abandoned_handle();
         detail::check_mpi(rc, "MPI_Win_free");
       }
@@ -563,11 +563,11 @@ namespace mp1 {
         return;
       MPI_Win handle = native_handle();
       view_ = mpi_window{};
-      if (not detail::mpi_active()) {
+      if (not detail::mpi_active()) [[unlikely]] {
         detail::note_abandoned_handle();
         return;
       }
-      if (MPI_Win_free(&handle) != MPI_SUCCESS)
+      if (MPI_Win_free(&handle) != MPI_SUCCESS) [[unlikely]]
         detail::note_abandoned_handle();
     }
 
@@ -578,7 +578,7 @@ namespace mp1 {
 
     /// The one validity precondition used by every operation taking a window.
     inline void require_valid(const mpi_window& w, const context& ctx) {
-      if (not w.is_valid())
+      if (not w.is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid window");
     }
 

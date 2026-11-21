@@ -45,10 +45,10 @@ namespace mp1 {
     [[nodiscard]] inline const char* stringtag_text(
         std::string_view stringtag, const context& ctx,
         std::source_location where = std::source_location::current()) {
-      if (stringtag.find('\0') != std::string_view::npos) {
+      if (stringtag.find('\0') != std::string_view::npos) [[unlikely]] {
         throw_invalid(ctx.operation, "stringtag contains an embedded NUL byte", where);
       }
-      if (stringtag.size() >= static_cast<std::size_t>(MPI_MAX_STRINGTAG_LEN)) {
+      if (stringtag.size() >= static_cast<std::size_t>(MPI_MAX_STRINGTAG_LEN)) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, where,
             "stringtag length {} is not less than the MPI_MAX_STRINGTAG_LEN "
@@ -93,12 +93,12 @@ namespace mp1 {
         // A result_pending request's destructor disposes of the duplicate: MPI_Comm_free is
         // collective and can block.  After finalize, or when the slot may not have been
         // written by a completed operation, abandon and count it instead.
-        if (not completed_ or not mpi_active()) {
+        if (not completed_ or not mpi_active()) [[unlikely]] {
           note_abandoned_handle();
           return;
         }
         MPI_Comm handle = std::exchange(*slot_, MPI_COMM_NULL);
-        if (MPI_Comm_free(&handle) != MPI_SUCCESS)
+        if (MPI_Comm_free(&handle) != MPI_SUCCESS) [[unlikely]]
           note_abandoned_handle();
       }
 
@@ -187,7 +187,7 @@ namespace mp1 {
     /// \return cached remote group size; requires a valid intercommunicator view
     [[nodiscard]] int remote_size() const {
       require_valid_view("mp1::mpi_communicator::remote_size");
-      if (not inter_)
+      if (not inter_) [[unlikely]]
         throw_invalid("mp1::mpi_communicator::remote_size",
                       "communicator is not an intercommunicator");
       return remote_size_;
@@ -204,7 +204,7 @@ namespace mp1 {
     /// MPI_Comm_remote_group; the owning wrapper of the remote group.
     [[nodiscard]] group remote_group() const {
       require_active_view("mp1::mpi_communicator::remote_group");
-      if (not inter_)
+      if (not inter_) [[unlikely]]
         throw_invalid("mp1::mpi_communicator::remote_group",
                       "communicator is not an intercommunicator");
       MPI_Group result{MPI_GROUP_NULL};
@@ -251,7 +251,7 @@ namespace mp1 {
     /// A null info throws locally (MPI implementations reject MPI_INFO_NULL here).
     void set_info(const info& i) const {
       require_active_view("mp1::mpi_communicator::set_info");
-      if (i.native_handle() == MPI_INFO_NULL)
+      if (i.native_handle() == MPI_INFO_NULL) [[unlikely]]
         throw_invalid("mp1::mpi_communicator::set_info", "null info");
       detail::check_mpi(MPI_Comm_set_info(handle_, i.native_handle()), "MPI_Comm_set_info");
     }
@@ -304,7 +304,7 @@ namespace mp1 {
     }
 
     void require_valid_view(const context& ctx) const {
-      if (not is_valid())
+      if (not is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid communicator");
     }
 
@@ -469,9 +469,9 @@ namespace mp1 {
     /// MPI_Comm_free.
     [[nodiscard]] static communicator adopt(MPI_Comm h) {
       detail::require_mpi("mp1::communicator::adopt");
-      if (h == MPI_COMM_NULL)
+      if (h == MPI_COMM_NULL) [[unlikely]]
         throw_invalid("mp1::communicator::adopt", "MPI_COMM_NULL");
-      if (h == MPI_COMM_WORLD or h == MPI_COMM_SELF) {
+      if (h == MPI_COMM_WORLD or h == MPI_COMM_SELF) [[unlikely]] {
         throw_invalid("mp1::communicator::adopt",
                       "MPI_COMM_WORLD/MPI_COMM_SELF are not owned by mp1");
       }
@@ -486,9 +486,9 @@ namespace mp1 {
     /// adoption flag is recorded (MPI 4.1 §11.8.2, p. 524).
     [[nodiscard]] static communicator adopt_connected(MPI_Comm h) {
       detail::require_mpi("mp1::communicator::adopt_connected");
-      if (h == MPI_COMM_NULL)
+      if (h == MPI_COMM_NULL) [[unlikely]]
         throw_invalid("mp1::communicator::adopt_connected", "MPI_COMM_NULL");
-      if (h == MPI_COMM_WORLD or h == MPI_COMM_SELF) {
+      if (h == MPI_COMM_WORLD or h == MPI_COMM_SELF) [[unlikely]] {
         throw_invalid("mp1::communicator::adopt_connected",
                       "MPI_COMM_WORLD/MPI_COMM_SELF are not owned by mp1");
       }
@@ -550,7 +550,7 @@ namespace mp1 {
     [[nodiscard]] static communicator split(const mpi_communicator& other, int color,
                                             int key = 0) {
       require_factory_operand(other, "mp1::communicator::split");
-      if (color != MPI_UNDEFINED and color < 0) {
+      if (color != MPI_UNDEFINED and color < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::communicator::split"},
                                                std::source_location::current(),
                                                "color {} is negative", color);
@@ -564,7 +564,7 @@ namespace mp1 {
     [[nodiscard]] static communicator split_type(const mpi_communicator& other, int split_type,
                                                  int key = 0, const info& i = {}) {
       require_factory_operand(other, "mp1::communicator::split_type");
-      if (split_type != MPI_UNDEFINED and split_type < 0) {
+      if (split_type != MPI_UNDEFINED and split_type < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::communicator::split_type"},
                                                std::source_location::current(),
                                                "split_type {} is negative", split_type);
@@ -578,7 +578,7 @@ namespace mp1 {
 
     [[nodiscard]] static communicator create(const mpi_communicator& other, const group& gr) {
       require_factory_operand(other, "mp1::communicator::create");
-      if (not gr.is_valid())
+      if (not gr.is_valid()) [[unlikely]]
         throw_invalid("mp1::communicator::create", "invalid group");
       MPI_Comm result{MPI_COMM_NULL};
       detail::check_mpi(MPI_Comm_create(other.native_handle(), gr.native_handle(), &result),
@@ -589,23 +589,23 @@ namespace mp1 {
     [[nodiscard]] static communicator create_group(const mpi_communicator& other,
                                                    const group& gr, tag tag = {}) {
       require_factory_operand(other, "mp1::communicator::create_group");
-      if (other.is_inter()) {
+      if (other.is_inter()) [[unlikely]] {
         throw_invalid("mp1::communicator::create_group",
                       "intercommunicators are not supported");
       }
-      if (not gr.is_valid())
+      if (not gr.is_valid()) [[unlikely]]
         throw_invalid("mp1::communicator::create_group", "invalid group");
       // The group-creation tag does not conflict with message tags, but it is a tag in the
       // same legal range and must not be a wildcard (MPI 4.1 §7.4.4).
-      if (tag == any_tag)
+      if (tag == any_tag) [[unlikely]]
         detail::fail_as<std::invalid_argument>({"mp1::communicator::create_group"},
                                                std::source_location::current(),
                                                "MPI_ANY_TAG is not a group-creation tag");
-      if (tag.value < 0)
+      if (tag.value < 0) [[unlikely]]
         detail::fail_as<std::invalid_argument>({"mp1::communicator::create_group"},
                                                std::source_location::current(),
                                                "tag {} is negative", tag.value);
-      if (tag.value > other.tag_ub())
+      if (tag.value > other.tag_ub()) [[unlikely]]
         detail::fail_as<std::invalid_argument>(
             {"mp1::communicator::create_group"}, std::source_location::current(),
             "tag {} exceeds MPI_TAG_UB {}", tag.value, other.tag_ub());
@@ -634,7 +634,7 @@ namespace mp1 {
         const group& gr, std::string_view stringtag, const info& hints = {},
         error_handler handler = error_handler::are_fatal) {
       const context ctx{"mp1::communicator::create_from_group"};
-      if (not gr.is_valid())
+      if (not gr.is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid group");
       detail::require_mpi(ctx);
       const char* native_tag = detail::stringtag_text(stringtag, ctx);
@@ -666,7 +666,7 @@ namespace mp1 {
         int remote_leader, std::string_view stringtag, const info& hints = {},
         error_handler handler = error_handler::are_fatal) {
       const context ctx{"mp1::communicator::intercomm_create_from_groups"};
-      if (not local_group.is_valid())
+      if (not local_group.is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid local group");
       detail::require_mpi(ctx);
       const char* native_tag = detail::stringtag_text(stringtag, ctx);
@@ -677,16 +677,16 @@ namespace mp1 {
       // non-leader and the erroneous call is left to MPI (no local throw).
       const int local_rank = local_group.rank();
       if (local_rank != MPI_UNDEFINED) {
-        if (local_leader < 0 or local_leader >= local_group.size()) {
+        if (local_leader < 0 or local_leader >= local_group.size()) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                  "local_leader {} is outside [0,{})",
                                                  local_leader, local_group.size());
         }
         if (local_rank == local_leader) {
-          if (not remote_group.is_valid())
+          if (not remote_group.is_valid()) [[unlikely]]
             throw_invalid(ctx.operation, "invalid remote group");
           if (not remote_group.is_empty() and
-              (remote_leader < 0 or remote_leader >= remote_group.size())) {
+              (remote_leader < 0 or remote_leader >= remote_group.size())) [[unlikely]] {
             detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                    "remote_leader {} is outside [0,{})",
                                                    remote_leader, remote_group.size());
@@ -704,7 +704,7 @@ namespace mp1 {
 
     [[nodiscard]] static communicator merge(const mpi_communicator& inter, bool high) {
       require_factory_operand(inter, "mp1::communicator::merge");
-      if (not inter.is_inter()) {
+      if (not inter.is_inter()) [[unlikely]] {
         throw_invalid("mp1::communicator::merge", "operand is not an intercommunicator");
       }
       MPI_Comm result{MPI_COMM_NULL};
@@ -727,26 +727,26 @@ namespace mp1 {
                                                        const mpi_communicator& peer,
                                                        int remote_leader, tag tag = {}) {
       require_factory_operand(local, "mp1::communicator::intercomm_create");
-      if (local.is_inter()) {
+      if (local.is_inter()) [[unlikely]] {
         throw_invalid("mp1::communicator::intercomm_create",
                       "local must be an intracommunicator");
       }
-      if (local_leader < 0 or local_leader >= local.size()) {
+      if (local_leader < 0 or local_leader >= local.size()) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"mp1::communicator::intercomm_create"}, std::source_location::current(),
             "local_leader {} is outside [0,{})", local_leader, local.size());
       }
-      if (tag == any_tag) {
+      if (tag == any_tag) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::communicator::intercomm_create"},
                                                std::source_location::current(),
                                                "MPI_ANY_TAG is not an intercommunicator tag");
       }
-      if (tag.value < 0) {
+      if (tag.value < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::communicator::intercomm_create"},
                                                std::source_location::current(),
                                                "tag {} is negative", tag.value);
       }
-      if (tag.value > local.tag_ub()) {
+      if (tag.value > local.tag_ub()) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"mp1::communicator::intercomm_create"}, std::source_location::current(),
             "tag {} exceeds MPI_TAG_UB {}", tag.value, local.tag_ub());
@@ -754,11 +754,11 @@ namespace mp1 {
       if (local.rank() == local_leader) {
         // Leader-only arguments; MPI ignores them at every other local rank.
         require_factory_operand(peer, "mp1::communicator::intercomm_create");
-        if (peer.is_inter()) {
+        if (peer.is_inter()) [[unlikely]] {
           throw_invalid("mp1::communicator::intercomm_create",
                         "peer must be an intracommunicator");
         }
-        if (remote_leader < 0 or remote_leader >= peer.size()) {
+        if (remote_leader < 0 or remote_leader >= peer.size()) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(
               {"mp1::communicator::intercomm_create"}, std::source_location::current(),
               "remote_leader {} is outside [0,{})", remote_leader, peer.size());
@@ -781,14 +781,14 @@ namespace mp1 {
       if (not is_valid())
         return;
       detail::require_mpi_checked("mp1::communicator::free");
-      if (policy_ != release_policy::free) {
+      if (policy_ != release_policy::free) [[unlikely]] {
         detail::fail_with<std::logic_error>(
             "mp1::communicator::free", std::source_location::current(),
             "this owner has disconnect policy; call disconnect() (both ends of a "
             "spawned/connected intercommunicator must disconnect) or release() for a "
             "non-cooperating peer");
       }
-      if (native_handle() == MPI_COMM_WORLD or native_handle() == MPI_COMM_SELF) {
+      if (native_handle() == MPI_COMM_WORLD or native_handle() == MPI_COMM_SELF) [[unlikely]] {
         detail::fail_with<std::logic_error>("mp1::communicator::free",
                                             std::source_location::current(),
                                             "MPI_COMM_WORLD/MPI_COMM_SELF cannot be freed");
@@ -796,7 +796,7 @@ namespace mp1 {
       MPI_Comm handle = native_handle();
       const int rc = MPI_Comm_free(&handle);
       reset_owner_state();
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         detail::note_abandoned_handle();
         detail::check_mpi(rc, "MPI_Comm_free");
       }
@@ -812,7 +812,7 @@ namespace mp1 {
       if (not is_valid())
         return;
       detail::require_mpi_checked("mp1::communicator::disconnect");
-      if (native_handle() == MPI_COMM_WORLD or native_handle() == MPI_COMM_SELF) {
+      if (native_handle() == MPI_COMM_WORLD or native_handle() == MPI_COMM_SELF) [[unlikely]] {
         detail::fail_with<std::logic_error>(
             "mp1::communicator::disconnect", std::source_location::current(),
             "MPI_COMM_WORLD/MPI_COMM_SELF cannot be disconnected");
@@ -827,7 +827,7 @@ namespace mp1 {
       // clears it before inspecting rc for the same reason).
       if (was_parent)
         detail::parent_adopted().store(false);
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         detail::note_abandoned_handle();
         detail::check_mpi(rc, "MPI_Comm_disconnect");
       }
@@ -892,7 +892,7 @@ namespace mp1 {
       const release_policy policy = policy_;
       const bool was_parent = parent_;
       reset_owner_state();
-      if (not detail::mpi_active()) {
+      if (not detail::mpi_active()) [[unlikely]] {
         if (was_parent)
           detail::parent_adopted().store(false);
         detail::note_abandoned_handle();
@@ -902,7 +902,7 @@ namespace mp1 {
                                                           : MPI_Comm_free(&handle);
       if (was_parent)
         detail::parent_adopted().store(false);
-      if (rc != MPI_SUCCESS)
+      if (rc != MPI_SUCCESS) [[unlikely]]
         detail::note_abandoned_handle();
     }
 
@@ -935,9 +935,9 @@ namespace mp1 {
   /// std::runtime_error propagates; the request is already freed.  take_communicator() does
   /// not wait: complete the request first so its status stays visible.
   [[nodiscard]] inline communicator take_communicator(request& r) {
-    if (not detail::request_access::retains_result(r))
+    if (not detail::request_access::retains_result(r)) [[unlikely]]
       throw_invalid("mp1::take_communicator", "request has no communicator result");
-    if (r.state() != request_state::result_pending) {
+    if (r.state() != request_state::result_pending) [[unlikely]] {
       detail::fail_with<std::logic_error>("mp1::take_communicator",
                                           std::source_location::current(),
                                           "the request has not completed");
@@ -956,7 +956,7 @@ namespace mp1 {
 
     /// The one validity precondition used by every operation taking a communicator.
     inline void require_valid(const mpi_communicator& c, const context& ctx) {
-      if (not c.is_valid())
+      if (not c.is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid communicator");
     }
 
@@ -1069,7 +1069,7 @@ namespace mp1 {
     if (handle == MPI_COMM_NULL)
       return communicator{};
     bool expected = false;
-    if (not detail::parent_adopted().compare_exchange_strong(expected, true))
+    if (not detail::parent_adopted().compare_exchange_strong(expected, true)) [[unlikely]]
       detail::fail_with<std::logic_error>("mp1::parent", std::source_location::current(),
                                           "the parent intercommunicator was already adopted; "
                                           "disconnect the previous owner first");

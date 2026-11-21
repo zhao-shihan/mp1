@@ -36,11 +36,11 @@ namespace mp1::detail {
   [[nodiscard]] inline root_role classify_root(const mpi_communicator& c, int root_arg,
                                                const context& ctx) {
     if (not c.is_inter()) {
-      if (root_arg == MPI_ROOT or root_arg == MPI_PROC_NULL) {
+      if (root_arg == MPI_ROOT or root_arg == MPI_PROC_NULL) [[unlikely]] {
         throw_invalid(ctx.operation,
                       "MPI_ROOT/MPI_PROC_NULL are not valid intracommunicator roots");
       }
-      if (root_arg < 0 or root_arg >= c.size()) {
+      if (root_arg < 0 or root_arg >= c.size()) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "root {} is outside [0,{})", root_arg, c.size());
       }
@@ -50,7 +50,7 @@ namespace mp1::detail {
       return root_role::inter_root;
     if (root_arg == MPI_PROC_NULL)
       return root_role::inter_noop;
-    if (root_arg < 0 or root_arg >= c.remote_size()) {
+    if (root_arg < 0 or root_arg >= c.remote_size()) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "intercommunicator root {} is outside [0,{})",
                                              root_arg, c.remote_size());
@@ -63,7 +63,7 @@ namespace mp1::detail {
   }
 
   inline void require_peers(std::size_t n, int expected, const context& ctx) {
-    if (static_cast<std::size_t>(expected) != n) {
+    if (static_cast<std::size_t>(expected) != n) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "array length {} does not match the required {}",
                                              n, expected);
@@ -232,8 +232,8 @@ namespace mp1::detail {
           break;
       }
     } else {
-      if (inter and
-          (family == collective_family::scan or family == collective_family::exscan)) {
+      if (inter and (family == collective_family::scan or family == collective_family::exscan))
+          [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "{} is not defined on intercommunicators",
                                                family_name(family));
@@ -271,7 +271,7 @@ namespace mp1::detail {
           legal = false;
           break;
       }
-      if (not legal) {
+      if (not legal) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "in-place {} is not valid for this role",
                                                family_name(family));
@@ -360,20 +360,20 @@ namespace mp1::detail {
     MPI_Count bytes{0};
     MPI_Datatype type{base};
     if (l != nullptr) {
-      if (not l->is_valid())
+      if (not l->is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid layout");
       if (kind == block_kind::layout) {
         mpi_count = 1;
         type = l->native_handle();
       } else {
-        if (not l->is_base_repetition())
+        if (not l->is_base_repetition()) [[unlikely]]
           detail::fail_with<std::logic_error>(ctx.operation, std::source_location::current(),
                                               "element lowering requires a flat layout");
         mpi_count = static_cast<MPI_Count>(l->size());
       }
       bytes = l->byte_size();
     } else {
-      if (count < 0)
+      if (count < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative count");
       mpi_count = static_cast<MPI_Count>(count);
       bytes = checked_bytes(mpi_count, base_datatype<T>().size, ctx);
@@ -396,12 +396,12 @@ namespace mp1::detail {
 
   [[nodiscard]] inline count_t container_block(count_t total, int peers, const context& ctx,
                                                const char* side) {
-    if (total < 0)
+    if (total < 0) [[unlikely]]
       throw_invalid(ctx.operation, "negative count");
-    if (peers <= 0)
+    if (peers <= 0) [[unlikely]]
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "empty peer group for a container {}", side);
-    if (total % static_cast<count_t>(peers) != 0) {
+    if (total % static_cast<count_t>(peers) != 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(
           ctx, std::source_location::current(),
           "container {} size is not a multiple of the peer count", side);
@@ -415,7 +415,7 @@ namespace mp1::detail {
   // signatures, which cannot be done locally.
   inline void require_same_blocks(const data_block& send, const data_block& recv,
                                   const context& ctx) {
-    if (send.bytes != recv.bytes) {
+    if (send.bytes != recv.bytes) [[unlikely]] {
       throw_invalid(ctx.operation, "send and receive block byte sizes differ");
     }
   }
@@ -423,7 +423,7 @@ namespace mp1::detail {
   // Container sizes are std::size_t; public element counts are count_t.  A size that does not
   // fit is public input, so it throws std::invalid_argument.
   [[nodiscard]] inline count_t checked_size(std::size_t value, const context& ctx) {
-    if (value > static_cast<std::size_t>(std::numeric_limits<count_t>::max())) {
+    if (value > static_cast<std::size_t>(std::numeric_limits<count_t>::max())) [[unlikely]] {
       throw_invalid(ctx.operation, "container size does not fit count_t");
     }
     return static_cast<count_t>(value);
@@ -517,7 +517,7 @@ namespace mp1::detail {
     // equality is a local invariant.  Intercommunicator: the two directions are different
     // groups and may carry different block sizes (MPI 4.1 §6.8).
     if (o.family == collective_family::alltoall and not sides.in_place and not c.is_inter() and
-        o.send.elements != o.recv.elements) {
+        o.send.elements != o.recv.elements) [[unlikely]] {
       throw_invalid(ctx.operation, "container send and receive sizes differ");
     }
 
@@ -565,7 +565,7 @@ namespace mp1::detail {
   // intercommunicator's directions are in different groups and are left to MPI.
   inline void require_same_variable_elements(MPI_Count send_elements, MPI_Count recv_elements,
                                              const context& ctx) {
-    if (send_elements != recv_elements) {
+    if (send_elements != recv_elements) [[unlikely]] {
       throw_invalid(ctx.operation, "local send and receive block element counts differ");
     }
   }
@@ -701,7 +701,7 @@ namespace mp1::detail {
                                    count_t elements, const context& ctx, const char* side) {
     require_peers(source.size(), peers, ctx);
     if (source.dense()) {
-      if (source.values.size() != source.displs.size()) {
+      if (source.values.size() != source.displs.size()) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "counts length {} does not match the displacements length {}", source.values.size(),
@@ -710,12 +710,12 @@ namespace mp1::detail {
       for (std::size_t i = 0; i < source.values.size(); ++i) {
         const count_t count = source.values[i];
         const count_t displacement = source.displs[i];
-        if (count < 0) {
+        if (count < 0) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                  "negative count {} in counts block {}", count,
                                                  i);
         }
-        if (displacement < 0) {
+        if (displacement < 0) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(
               ctx, std::source_location::current(),
               "negative displacement {} in displacements block {}", displacement, i);
@@ -729,7 +729,7 @@ namespace mp1::detail {
         // plan normalizes the wire count to 0; the non-negative/representability checks above
         // still run first, so a malformed descriptor is rejected before any datatype query.
         if (base_datatype<T>().size != 0 and count != 0 and
-            (displacement > elements or count > elements - displacement)) {
+            (displacement > elements or count > elements - displacement)) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(
               ctx, std::source_location::current(),
               "{} block {} (displacement {}, count {}) exceeds the {} buffer of {} elements",
@@ -738,7 +738,8 @@ namespace mp1::detail {
       }
       return;
     }
-    if (not source.displs.empty() and source.displs.size() != source.layouts.size()) {
+    if (not source.displs.empty() and source.displs.size() != source.layouts.size())
+        [[unlikely]] {
       detail::fail_as<std::invalid_argument>(
           ctx, std::source_location::current(),
           "displacement array length {} does not match the required {}", source.displs.size(),
@@ -747,13 +748,13 @@ namespace mp1::detail {
     const count_t buffer_bytes = checked_count_mul(elements, base_datatype<T>().extent, ctx);
     for (std::size_t i = 0; i < source.layouts.size(); ++i) {
       const layout<T>& block = source.layouts[i];
-      if (not block.is_valid()) {
+      if (not block.is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "invalid layout in a block array");
       }
       if (block.byte_size() == 0)
         continue;
       const count_t displacement = source.displs.empty() ? 0 : source.displs[i];
-      if (displacement < 0) {
+      if (displacement < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "negative displacement {} in displacements block {}", displacement, i);
@@ -761,7 +762,7 @@ namespace mp1::detail {
       const count_t shift = checked_count_mul(displacement, base_datatype<T>().extent, ctx);
       const count_t lower = checked_count_add(shift, block.true_byte_lower_bound(), ctx);
       const count_t upper = checked_count_add(shift, block.true_byte_upper_bound(), ctx);
-      if (lower < 0 or upper > buffer_bytes) {
+      if (lower < 0 or upper > buffer_bytes) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "{} block {} (displacement {}, layout bytes "
                                                "[{},{})) exceeds the {} buffer of {} elements",
@@ -776,7 +777,7 @@ namespace mp1::detail {
                                               transfer_direction direction, const context& ctx,
                                               const char* missing) {
     if (source.layout_form) {
-      if (source.view == nullptr or not source.view->is_valid())
+      if (source.view == nullptr or not source.view->is_valid()) [[unlikely]]
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "missing {}", missing);
       return xfer_plan<T>::one(base, *source.view, direction);
@@ -851,10 +852,10 @@ namespace mp1::detail {
       role = classify_root(c, o.root, ctx);
     if (in_place) {
       if (not root_family) {
-        if (c.is_inter())
+        if (c.is_inter()) [[unlikely]]
           throw_invalid(ctx.operation,
                         "in-place collectives are invalid on an intercommunicator");
-      } else if (role != root_role::intra_root) {
+      } else if (role != root_role::intra_root) [[unlikely]] {
         throw_invalid(ctx.operation,
                       o.family == variable_family::gatherv
                           ? "in-place gatherv requires an intracommunicator root"
@@ -901,7 +902,7 @@ namespace mp1::detail {
         // blocks.  A dense block is one packed interval by construction, so only layouts need
         // the per-descriptor map check.
         for (std::size_t i = 0; i < o.send.many.layouts.size(); ++i) {
-          if (not o.send.many.layouts[i].is_valid())
+          if (not o.send.many.layouts[i].is_valid()) [[unlikely]]
             throw_invalid(ctx.operation, "invalid layout in a block array");
           require_disjoint_layout(o.send.many.layouts[i], ctx, "root send layout");
         }
@@ -1026,7 +1027,7 @@ namespace mp1::detail {
   template<class T>
   void require_reduction_base(const context& ctx) {
     const datatype_info& info = datatype_info_of<T>();
-    if (info.overlap == overlap_state::overlap) {
+    if (info.overlap == overlap_state::overlap) [[unlikely]] {
       throw_invalid(ctx.operation,
                     "native_datatype<T>() has overlapping type-map entries; an overlapping "
                     "reduction receive is erroneous");

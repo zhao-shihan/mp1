@@ -216,12 +216,12 @@ namespace mp1 {
     /// the object closed and reusable.
     void open(const mpi_communicator& comm, const std::filesystem::path& name, access_mode mode,
               const info& i = {}) {
-      if (is_open())
+      if (is_open()) [[unlikely]]
         detail::fail_with<std::runtime_error>("mp1::file::open",
                                               std::source_location::current(), "already open");
       detail::require_mpi("mp1::file::open");
       detail::require_valid(comm, "mp1::file::open");
-      if (comm.is_inter()) {
+      if (comm.is_inter()) [[unlikely]] {
         throw_invalid("mp1::file::open", "MPI-IO requires an intracommunicator");
       }
       detail::validate_file_amode(static_cast<int>(mode), "mp1::file::open");
@@ -235,7 +235,7 @@ namespace mp1 {
       MPI_File opened{MPI_FILE_NULL};
       const int rc = MPI_File_open(comm.native_handle(), filename.c_str(),
                                    static_cast<int>(mode), i.native_handle(), &opened);
-      if (rc != MPI_SUCCESS)
+      if (rc != MPI_SUCCESS) [[unlikely]]
         throw mpi_error{rc, "MPI_File_open"};
 
       state->handle = opened;
@@ -248,7 +248,7 @@ namespace mp1 {
     /// unknown, so typed access falls back to MPI's own type-signature rule.
     [[nodiscard]] static file adopt(MPI_File handle) {
       detail::require_mpi("mp1::file::adopt");
-      if (handle == MPI_FILE_NULL)
+      if (handle == MPI_FILE_NULL) [[unlikely]]
         throw_invalid("mp1::file::adopt", "MPI_FILE_NULL");
       int amode{0};
       detail::check_file(MPI_File_get_amode(handle, &amode), "mp1::file::adopt");
@@ -273,11 +273,11 @@ namespace mp1 {
         return;
       const context ctx{"mp1::file::close"};
       detail::require_mpi_checked(ctx);
-      if (state_->split.phase == detail::split_phase::active) {
+      if (state_->split.phase == detail::split_phase::active) [[unlikely]] {
         detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
                                               "close during a split collective");
       }
-      if (state_->split.phase == detail::split_phase::unknown) {
+      if (state_->split.phase == detail::split_phase::unknown) [[unlikely]] {
         detail::fail_with<std::runtime_error>(
             ctx.operation, std::source_location::current(),
             "close while the split collective state is unknown after a failed begin/end");
@@ -288,7 +288,7 @@ namespace mp1 {
       state_->handle = MPI_FILE_NULL;
       const int rc = MPI_File_close(&handle);
       state_.reset();
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         detail::note_abandoned_handle();
         detail::check_file(rc, ctx);
       }
@@ -384,7 +384,7 @@ namespace mp1 {
       detail::require_file_displacement(*state_, disp, ctx);
       const int rc =
           MPI_File_set_view(handle, disp, MPI_BYTE, MPI_BYTE, datarep, i.native_handle());
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         state_->view.known = false;
         detail::check_file(rc, ctx);
       }
@@ -408,7 +408,7 @@ namespace mp1 {
                   const info& i = {}) {
       const context ctx{"mp1::file::set_view"};
       detail::require_file_data_type<T>();
-      if (not filetype.is_valid())
+      if (not filetype.is_valid()) [[unlikely]]
         throw_invalid("mp1::file::set_view", "invalid layout");
       detail::require_file_datarep(datarep, ctx);
       MPI_File handle = detail::require_collective_file(state_, true, ctx);
@@ -419,7 +419,7 @@ namespace mp1 {
       const MPI_Datatype etype = detail::datatype_info_of<T>().type;
       const int rc = MPI_File_set_view(handle, disp, etype, filetype.native_handle(), datarep,
                                        i.native_handle());
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         state_->view.known = false;
         detail::check_file(rc, ctx);
       }
@@ -493,7 +493,7 @@ namespace mp1 {
       // collective I/O operation, so it is legal between a split begin and its end.
       MPI_File handle =
           detail::require_collective_file_during_split(state_, true, "mp1::file::set_info");
-      if (i.native_handle() == MPI_INFO_NULL)
+      if (i.native_handle() == MPI_INFO_NULL) [[unlikely]]
         throw_invalid("mp1::file::set_info", "null info");
       detail::check_file(MPI_File_set_info(handle, i.native_handle()), "MPI_File_set_info");
     }
@@ -550,7 +550,7 @@ namespace mp1 {
     template<element T>
     [[nodiscard]] MPI_Aint get_type_extent(const layout<T>& filetype) const {
       detail::require_file_data_type<T>();
-      if (not filetype.is_valid())
+      if (not filetype.is_valid()) [[unlikely]]
         throw_invalid("mp1::file::get_type_extent", "invalid layout");
       MPI_File handle = detail::require_file(state_, "mp1::file::get_type_extent");
       MPI_Aint extent{0};
@@ -565,7 +565,7 @@ namespace mp1 {
     void set_error_handler(error_handler handler) {
       const context ctx{"mp1::file::set_error_handler"};
       detail::require_mpi(ctx);
-      if (not is_open())
+      if (not is_open()) [[unlikely]]
         detail::fail_with<std::runtime_error>(ctx, std::source_location::current(),
                                               "file is not open");
       detail::check_file(
@@ -578,7 +578,7 @@ namespace mp1 {
     /// with MPI_Errhandler_free before returning (MPI 4.1 section 9.3, Table 11.1).
     [[nodiscard]] std::optional<error_handler> get_error_handler() const {
       detail::require_mpi("mp1::file::get_error_handler");
-      if (not is_open())
+      if (not is_open()) [[unlikely]]
         detail::fail_with<std::runtime_error>("mp1::file::get_error_handler",
                                               std::source_location::current(),
                                               "file is not open");

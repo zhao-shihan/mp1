@@ -592,30 +592,31 @@ namespace mp1 {
     template<class T>
     [[nodiscard]] inline MPI_Op validate_raw_rma_op(MPI_Op op, bool allow_no_op,
                                                     const context& ctx) {
-      if (op == MPI_OP_NULL) {
+      if (op == MPI_OP_NULL) [[unlikely]] {
         throw_invalid(ctx.operation, "MPI_OP_NULL is not a valid RMA operator");
       }
       const predefined_op_kind kind = classify_predefined_op(op);
-      if (kind == predefined_op_kind::none) {
+      if (kind == predefined_op_kind::none) [[unlikely]] {
         throw_invalid(
             ctx.operation,
             "only a predefined MPI_Op is allowed for RMA (MPI 4.1 §12.3.4 Accumulate/Get "
             "Accumulate/Fetch and Op); user-created and unknown handles cannot be used");
       }
-      if (kind == predefined_op_kind::maxloc or kind == predefined_op_kind::minloc) {
+      if (kind == predefined_op_kind::maxloc or kind == predefined_op_kind::minloc)
+          [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "{} requires an MPI_2* pair datatype, which mp1 does not model (MPI 4.1 §6.9.4 "
             "MINLOC and MAXLOC)",
             predefined_op_name(kind));
       }
-      if (kind == predefined_op_kind::no_op and not allow_no_op) {
+      if (kind == predefined_op_kind::no_op and not allow_no_op) [[unlikely]] {
         throw_invalid(ctx.operation,
                       "MPI_NO_OP is allowed only in MPI_Get_accumulate, MPI_Rget_accumulate "
                       "and MPI_Fetch_and_op (MPI 4.1 §12.3.4 Get Accumulate)");
       }
       const rma_datatype_category category = rma_datatype_category_of<T>();
-      if (not predefined_op_defined_for(kind, category)) {
+      if (not predefined_op_defined_for(kind, category)) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "{} is not defined for {} (MPI 4.1 §6.9.2 Predefined Reduction Operations); use a "
@@ -635,7 +636,7 @@ namespace mp1 {
         const context& ctx) {
       const rma_datatype_category category = rma_datatype_category_of<T>();
       if (category == rma_datatype_category::derived or
-          category == rma_datatype_category::invalid) {
+          category == rma_datatype_category::invalid) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "the element datatype is {}, not a supported C++ predefined datatype; "
@@ -826,7 +827,7 @@ namespace mp1 {
       check_mpi(MPI_Type_get_extent_c(type, &lower_bound, &extent),
                 {"MPI_Type_get_extent_c(reduction image child)"});
       const count_t result = checked_count(extent, ctx);
-      if (result < 0)
+      if (result < 0) [[unlikely]]
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "native datatype child extent {} is negative",
                                                result);
@@ -847,7 +848,7 @@ namespace mp1 {
       MPI_Count num_datatypes{0};
       int combiner = MPI_COMBINER_NAMED;
       if (MPI_Type_get_envelope_c(type, &num_integers, &num_addresses, &num_large_counts,
-                                  &num_datatypes, &combiner) != MPI_SUCCESS)
+                                  &num_datatypes, &combiner) != MPI_SUCCESS) [[unlikely]]
         return;
       if (combiner != MPI_COMBINER_NAMED and num_datatypes > 0) {
         MPI_Datatype owned = type;
@@ -886,7 +887,7 @@ namespace mp1 {
       const count_t address_count = checked_count(num_addresses, ctx);
       const count_t large_count = checked_count(num_large_counts, ctx);
       const count_t datatype_count = checked_count(num_datatypes, ctx);
-      if (datatype_count == 0)
+      if (datatype_count == 0) [[unlikely]]
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "native datatype combiner {} has no child datatype", combiner);
@@ -909,7 +910,7 @@ namespace mp1 {
         }
       };
       const auto require = [&](bool condition, const char* what) {
-        if (not condition)
+        if (not condition) [[unlikely]]
           detail::fail_as<std::invalid_argument>(
               ctx, std::source_location::current(),
               "native datatype combiner {} cannot be decoded: {} (integers {}, addresses "
@@ -1090,7 +1091,7 @@ namespace mp1 {
             collect_image_byte_runs(types[0], base, runs, ctx);
             release(0);
             return;
-          default:
+          [[unlikely]] default:
             detail::fail_as<std::invalid_argument>(
                 ctx, std::source_location::current(),
                 "native datatype combiner {} cannot be decoded into a mapped-byte plan; a "
@@ -1125,7 +1126,7 @@ namespace mp1 {
           const count_t object_size = static_cast<count_t>(sizeof(T));
           const count_t end =
               checked_count_add(run.offset, run.length, {"mp1: reduction callback datatype"});
-          if (run.offset < 0 or end > object_size)
+          if (run.offset < 0 or end > object_size) [[unlikely]]
             detail::fail_as<std::invalid_argument>(
                 ctx, std::source_location::current(),
                 "native datatype maps bytes [{}, {}) outside one T object of size {}",
@@ -1134,7 +1135,7 @@ namespace mp1 {
             const count_t back_end =
                 checked_count_add(merged.back().offset, merged.back().length,
                                   {"mp1: reduction callback datatype"});
-            if (run.offset < back_end)
+            if (run.offset < back_end) [[unlikely]]
               detail::fail_as<std::invalid_argument>(
                   ctx, std::source_location::current(),
                   "native datatype type map overlaps at byte {}; an overlapping receive is "
@@ -1152,7 +1153,7 @@ namespace mp1 {
           mapped_bytes =
               checked_count_add(mapped_bytes, run.length, {"mp1: reduction callback datatype"});
         }
-        if (mapped_bytes != native.size)
+        if (mapped_bytes != native.size) [[unlikely]]
           detail::fail_as<std::invalid_argument>(
               ctx, std::source_location::current(),
               "native datatype size {} does not match the decoded mapped-byte total {}; the "
@@ -1366,7 +1367,7 @@ namespace mp1 {
                                                        {"mp1: reduction image true extent"});
           if (image_lb != 0 or image_extent != sizeof_t or image_size != native.size or
               image_true_lb != 0 or image_true_extent != native.true_extent or
-              true_upper > sizeof_t) {
+              true_upper > sizeof_t) [[unlikely]] {
             detail::fail_as<std::invalid_argument>(
                 {"mp1: reduction callback datatype"}, std::source_location::current(),
                 "MPI_Type_create_resized produced an inconsistent image: lb={}, extent={}, "
@@ -1424,7 +1425,8 @@ namespace mp1 {
       if (not operation.callback_image)
         return;
       const datatype_info& native = datatype_info_of<T>();
-      if (native.true_lb != 0 or native.true_extent != static_cast<count_t>(sizeof(T))) {
+      if (native.true_lb != 0 or native.true_extent != static_cast<count_t>(sizeof(T)))
+          [[unlikely]] {
         throw_invalid(
             ctx.operation,
             "mp1: managed reduce_scatter requires a callback image whose type map spans the "
@@ -1440,7 +1442,7 @@ namespace mp1 {
     [[nodiscard]] reduction_operation reduction_op(const Op& op) {
       using F = std::decay_t<Op>;
       if constexpr (std::is_same_v<F, MPI_Op>) {
-        if (op == MPI_OP_NULL) {
+        if (op == MPI_OP_NULL) [[unlikely]] {
           throw_invalid("mp1", "MPI_OP_NULL is not a valid reduction operator");
         }
         return reduction_operation{op, native_datatype<T>(), false, 0};

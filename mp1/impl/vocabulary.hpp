@@ -165,7 +165,7 @@ namespace mp1 {
   template<class T>
   [[nodiscard]] inline std::span<T> span_from(T* data, count_t count) {
     const std::source_location where = std::source_location::current();
-    if (count < 0) {
+    if (count < 0) [[unlikely]] {
       // vocabulary.hpp is the MPI-free base of the include graph, so it cannot include
       // error.hpp (whose MPI boundary pulls in <mpi.h>) and deliberately does not include
       // <format> either: the same check-site message is composed from std::string and
@@ -175,7 +175,7 @@ namespace mp1 {
                                   std::to_string(static_cast<long long>(count)) +
                                   " is negative"};
     }
-    if (data == nullptr and count > 0) {
+    if (data == nullptr and count > 0) [[unlikely]] {
       throw std::invalid_argument{"mp1: mp1::span_from (" + std::string{where.file_name()} +
                                   ":" + std::to_string(where.line()) +
                                   "): null pointer with positive count " +

@@ -327,7 +327,7 @@ namespace mp1::detail {
 
   [[nodiscard]] inline MPI_Count matched_message_bytes(const MPI_Status& probed) noexcept {
     MPI_Count bytes{static_cast<MPI_Count>(-1)};
-    if (MPI_Get_count_c(&probed, MPI_PACKED, &bytes) != MPI_SUCCESS)
+    if (MPI_Get_count_c(&probed, MPI_PACKED, &bytes) != MPI_SUCCESS) [[unlikely]]
       return static_cast<MPI_Count>(-1);
     return bytes;
   }
@@ -353,7 +353,7 @@ namespace mp1::detail {
       message = MPI_MESSAGE_NULL;
       return;
     }
-    if (not mpi_active())
+    if (not mpi_active()) [[unlikely]]
       detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
                                             "MPI is not active");
 
@@ -386,7 +386,7 @@ namespace mp1::detail {
       message = MPI_MESSAGE_NULL;  // never retry: the matched handle is single-use
       throw;
     }
-    if (rc != MPI_SUCCESS) {
+    if (rc != MPI_SUCCESS) [[unlikely]] {
       message = MPI_MESSAGE_NULL;
       throw mpi_error{rc, std::format("{}: MPI_Mrecv_c (MPI_PACKED discard)", ctx.operation)};
     }
@@ -402,7 +402,7 @@ namespace mp1::detail {
       message = MPI_MESSAGE_NULL;
       return;
     }
-    if (not mpi_active()) {
+    if (not mpi_active()) [[unlikely]] {
       note_abandoned_handle();
       message = MPI_MESSAGE_NULL;
       return;

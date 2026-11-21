@@ -49,7 +49,7 @@ namespace mp1 {
       std::vector<int> sorted{ranks.begin(), ranks.end()};
       std::sort(sorted.begin(), sorted.end());
       const auto duplicate = std::adjacent_find(sorted.begin(), sorted.end());
-      if (duplicate != sorted.end()) {
+      if (duplicate != sorted.end()) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "duplicate rank {}", *duplicate);
       }
@@ -129,11 +129,11 @@ namespace mp1 {
     /// without being range-checked against this group.
     [[nodiscard]] int translate(int rank, const group& other) const {
       require_usable("mp1::group::translate");
-      if (not other.is_valid())
+      if (not other.is_valid()) [[unlikely]]
         throw_invalid("mp1::group::translate", "invalid other group");
       if (rank == MPI_PROC_NULL)
         return MPI_PROC_NULL;
-      if (rank < 0 or rank >= size()) {
+      if (rank < 0 or rank >= size()) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::group::translate"},
                                                std::source_location::current(),
                                                "rank {} is outside [0,{})", rank, size());
@@ -148,7 +148,7 @@ namespace mp1 {
     /// MPI and two valid groups.
     [[nodiscard]] equality_type compare(const group& other) const {
       require_usable("mp1::group::compare");
-      if (not other.is_valid())
+      if (not other.is_valid()) [[unlikely]]
         throw_invalid("mp1::group::compare", "invalid other group");
       int result{MPI_UNEQUAL};
       detail::check_mpi(MPI_Group_compare(handle_, other.handle_, &result),
@@ -193,7 +193,7 @@ namespace mp1 {
     }
 
     void require_usable(const context& ctx) const {
-      if (not is_valid())
+      if (not is_valid()) [[unlikely]]
         throw_invalid(ctx.operation, "invalid group");
       detail::require_mpi(ctx);
     }
@@ -214,7 +214,8 @@ namespace mp1 {
 
     [[nodiscard]] inline std::size_t group_rank_count(std::span<const int> ranks,
                                                       const context& ctx) {
-      if (ranks.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (ranks.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid(ctx.operation, "more than INT_MAX ranks");
       }
       return ranks.size();
@@ -222,7 +223,8 @@ namespace mp1 {
 
     [[nodiscard]] inline std::size_t group_range_count(std::span<const rank_range> ranges,
                                                        const context& ctx) {
-      if (ranges.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (ranges.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid(ctx.operation, "more than INT_MAX ranges");
       }
       return ranges.size();
@@ -238,16 +240,17 @@ namespace mp1 {
     /// the range form into group_incl.
     inline void require_valid_range(const rank_range& range, int group_size,
                                     const context& ctx) {
-      if (range.stride == 0) {
+      if (range.stride == 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "range stride is zero");
       }
-      if (range.first < 0 or range.first >= group_size) {
+      if (range.first < 0 or range.first >= group_size) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "range first rank {} is outside [0,{})",
                                                range.first, group_size);
       }
-      if (range.first != range.last and (range.last > range.first) != (range.stride > 0)) {
+      if (range.first != range.last and (range.last > range.first) != (range.stride > 0))
+          [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "range (first {}, last {}, stride {}) direction does not match its stride",
@@ -256,7 +259,7 @@ namespace mp1 {
       const long long gap = static_cast<long long>(range.last) - range.first;
       const long long steps = gap / range.stride;
       const long long last_emitted = static_cast<long long>(range.first) + steps * range.stride;
-      if (last_emitted < 0 or last_emitted >= group_size) {
+      if (last_emitted < 0 or last_emitted >= group_size) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             ctx, std::source_location::current(),
             "range (first {}, last {}, stride {}) emits rank {} outside [0,{})", range.first,
@@ -303,7 +306,7 @@ namespace mp1 {
   [[nodiscard]] group get_group(const mpi_communicator& c);
 
   [[nodiscard]] inline group group_union(const group& a, const group& b) {
-    if (not a.is_valid() or not b.is_valid())
+    if (not a.is_valid() or not b.is_valid()) [[unlikely]]
       throw_invalid("mp1::group_union", "invalid group");
     detail::require_mpi("mp1::group_union");
     MPI_Group result{MPI_GROUP_NULL};
@@ -313,7 +316,7 @@ namespace mp1 {
   }
 
   [[nodiscard]] inline group group_intersection(const group& a, const group& b) {
-    if (not a.is_valid() or not b.is_valid())
+    if (not a.is_valid() or not b.is_valid()) [[unlikely]]
       throw_invalid("mp1::group_intersection", "invalid group");
     detail::require_mpi("mp1::group_intersection");
     MPI_Group result{MPI_GROUP_NULL};
@@ -323,7 +326,7 @@ namespace mp1 {
   }
 
   [[nodiscard]] inline group group_difference(const group& a, const group& b) {
-    if (not a.is_valid() or not b.is_valid())
+    if (not a.is_valid() or not b.is_valid()) [[unlikely]]
       throw_invalid("mp1::group_difference", "invalid group");
     detail::require_mpi("mp1::group_difference");
     MPI_Group result{MPI_GROUP_NULL};
@@ -336,12 +339,12 @@ namespace mp1 {
   /// (std::array, std::vector, C array or std::span); every rank must be valid and distinct and
   /// is validated before the MPI call (MPI 4.1 §7.3.2).  An empty span yields MPI_GROUP_EMPTY.
   [[nodiscard]] inline group group_incl(const group& g, std::span<const int> ranks) {
-    if (not g.is_valid())
+    if (not g.is_valid()) [[unlikely]]
       throw_invalid("mp1::group_incl", "invalid group");
     detail::require_mpi("mp1::group_incl");
     const int group_size = g.size();
     for (const int rank : ranks) {
-      if (rank < 0 or rank >= group_size) {
+      if (rank < 0 or rank >= group_size) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::group_incl"},
                                                std::source_location::current(),
                                                "rank {} is outside [0,{})", rank, group_size);
@@ -361,12 +364,12 @@ namespace mp1 {
   /// every rank must be valid and distinct (MPI 4.1 §7.3.2); an empty span returns a group
   /// identical to g.
   [[nodiscard]] inline group group_excl(const group& g, std::span<const int> ranks) {
-    if (not g.is_valid())
+    if (not g.is_valid()) [[unlikely]]
       throw_invalid("mp1::group_excl", "invalid group");
     detail::require_mpi("mp1::group_excl");
     const int group_size = g.size();
     for (const int rank : ranks) {
-      if (rank < 0 or rank >= group_size) {
+      if (rank < 0 or rank >= group_size) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::group_excl"},
                                                std::source_location::current(),
                                                "rank {} is outside [0,{})", rank, group_size);
@@ -390,7 +393,7 @@ namespace mp1 {
   /// (MPI 4.1 §7.3.2) that is not diagnosed locally.  An empty span yields MPI_GROUP_EMPTY.
   [[nodiscard]] inline group group_range_incl(const group& g,
                                               std::span<const rank_range> ranges) {
-    if (not g.is_valid())
+    if (not g.is_valid()) [[unlikely]]
       throw_invalid("mp1::group_range_incl", "invalid group");
     detail::require_mpi("mp1::group_range_incl");
     const int count = static_cast<int>(detail::group_range_count(ranges, "group_range_incl"));
@@ -408,7 +411,7 @@ namespace mp1 {
   /// contract are those of group_range_incl; an empty span returns a group identical to g.
   [[nodiscard]] inline group group_range_excl(const group& g,
                                               std::span<const rank_range> ranges) {
-    if (not g.is_valid())
+    if (not g.is_valid()) [[unlikely]]
       throw_invalid("mp1::group_range_excl", "invalid group");
     detail::require_mpi("mp1::group_range_excl");
     const int count = static_cast<int>(detail::group_range_count(ranges, "group_range_excl"));

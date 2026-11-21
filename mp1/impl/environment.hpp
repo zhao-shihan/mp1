@@ -142,21 +142,21 @@ namespace mp1 {
             enforce_thread_level(*required, level, /*owned=*/false);
           return false;
         }
-        case lifecycle_phase::finalizing:
-        case lifecycle_phase::finalized:
+        [[unlikely]] case lifecycle_phase::finalizing:
+        [[unlikely]] case lifecycle_phase::finalized:
           detail::fail_with<std::runtime_error>({"mp1::init"}, std::source_location::current(),
                                                 "init after finalize");
-        case lifecycle_phase::init_failed:
+        [[unlikely]] case lifecycle_phase::init_failed:
           detail::fail_with<std::runtime_error>({"mp1::init"}, std::source_location::current(),
                                                 "previous MPI initialization failed");
-        case lifecycle_phase::initializing:
+        [[unlikely]] case lifecycle_phase::initializing:
           detail::fail_with<std::runtime_error>({"mp1::init"}, std::source_location::current(),
                                                 "MPI initialization is in progress");
         case lifecycle_phase::idle:
           break;
       }
 
-      if (mpi_finalized()) {
+      if (mpi_finalized()) [[unlikely]] {
         phase.store(lifecycle_phase::finalized, std::memory_order_release);
         detail::fail_with<std::runtime_error>({"mp1::init"}, std::source_location::current(),
                                               "init after finalize");
@@ -187,17 +187,17 @@ namespace mp1 {
         rc = MPI_Init_thread(argc, argv, static_cast<int>(*required), &provided_level);
       } else {
         rc = MPI_Init(argc, argv);
-        if (rc == MPI_SUCCESS) {
+        if (rc == MPI_SUCCESS) [[likely]] {
           // MPI 4.1 §11.2.1: MPI_Init has the same effect as MPI_Init_thread with
           // required = SINGLE, but a provider configured with only a higher level (for
           // example a MULTIPLE-only launch) initializes that level instead.  Record what
           // MPI actually provides; on a failed query keep the conservative SINGLE.
           int queried = MPI_THREAD_SINGLE;
-          if (MPI_Query_thread(&queried) == MPI_SUCCESS)
+          if (MPI_Query_thread(&queried) == MPI_SUCCESS) [[likely]]
             provided_level = queried;
         }
       }
-      if (rc != MPI_SUCCESS) {
+      if (rc != MPI_SUCCESS) [[unlikely]] {
         phase.store(lifecycle_phase::init_failed, std::memory_order_release);
         throw mpi_error{rc, operation};
       }
@@ -278,27 +278,27 @@ namespace mp1 {
     const context ctx{"mp1::finalize"};
     std::lock_guard<std::mutex> lock{detail::lifecycle_mutex()};
     auto& phase = detail::lifecycle_phase_word();
-    if (detail::mpi_finalized()) {
+    if (detail::mpi_finalized()) [[unlikely]] {
       phase.store(detail::lifecycle_phase::finalized, std::memory_order_release);
       detail::fail_with<std::runtime_error>(ctx, std::source_location::current(),
                                             "MPI is already finalized");
     }
     switch (phase.load(std::memory_order_acquire)) {
-      case detail::lifecycle_phase::idle:
-      case detail::lifecycle_phase::active_adopted:
-        if (not detail::mpi_initialized())
+      [[unlikely]] case detail::lifecycle_phase::idle:
+      [[unlikely]] case detail::lifecycle_phase::active_adopted:
+        if (not detail::mpi_initialized()) [[unlikely]]
           detail::fail_with<std::runtime_error>(ctx, std::source_location::current(),
                                                 "MPI is not active");
         detail::fail_with<std::runtime_error>(ctx, std::source_location::current(),
                                               "MPI was not initialized by mp1");
-      case detail::lifecycle_phase::init_failed:
+      [[unlikely]] case detail::lifecycle_phase::init_failed:
         detail::fail_with<std::runtime_error>({"mp1::init"}, std::source_location::current(),
                                               "previous MPI initialization failed");
-      case detail::lifecycle_phase::finalizing:
-      case detail::lifecycle_phase::finalized:
+      [[unlikely]] case detail::lifecycle_phase::finalizing:
+      [[unlikely]] case detail::lifecycle_phase::finalized:
         detail::fail_with<std::runtime_error>(ctx, std::source_location::current(),
                                               "MPI is already finalized");
-      case detail::lifecycle_phase::initializing:
+      [[unlikely]] case detail::lifecycle_phase::initializing:
         detail::fail_with<std::runtime_error>({"mp1::init"}, std::source_location::current(),
                                               "MPI initialization is in progress");
       case detail::lifecycle_phase::active_owned:
@@ -467,13 +467,13 @@ namespace mp1 {
     /// for a negative size, std::bad_array_new_length when the attachment size overflows int,
     /// and mp1::mpi_error if MPI_Buffer_attach fails.
     explicit bsend_buffer(int size) {
-      if (size < 0) {
+      if (size < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>({"mp1::bsend_buffer"},
                                                std::source_location::current(),
                                                "size {} is negative", size);
       }
       const long long total = static_cast<long long>(size) + MPI_BSEND_OVERHEAD;
-      if (total > static_cast<long long>(std::numeric_limits<int>::max()))
+      if (total > static_cast<long long>(std::numeric_limits<int>::max())) [[unlikely]]
         throw std::bad_array_new_length{};
       buffer_ = ::operator new(static_cast<std::size_t>(total));
       try {

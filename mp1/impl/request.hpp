@@ -778,7 +778,7 @@ namespace mp1 {
         failure = std::current_exception();
       }
 
-      if (failure) {
+      if (failure) [[unlikely]] {
         // MPI completion has already run, so destroying the payload is safe; a persistent
         // request cannot be restarted because its payload is gone.
         request_access::clear_payload(r);
@@ -840,7 +840,7 @@ namespace mp1 {
           if (active_[i] != 0) {
             any_active_ = true;
             const MPI_Request handle = request_access::handle(r);
-            if (handle == MPI_REQUEST_NULL) {
+            if (handle == MPI_REQUEST_NULL) [[unlikely]] {
               detail::fail_as<std::logic_error>(
                   ctx, std::source_location::current(),
                   "active request slot {} has a null MPI_Request handle", i);
@@ -933,7 +933,7 @@ namespace mp1 {
           std::exception_ptr slot_failure;
           result[i] = finish_committed(requests_[i], slot_verdict, native_[i],
                                        rc == MPI_ERR_IN_STATUS, slot_failure);
-          if (slot_failure and not failure)
+          if (slot_failure and not failure) [[unlikely]]
             failure = slot_failure;
         }
       }
@@ -948,12 +948,12 @@ namespace mp1 {
     private:
       [[nodiscard]] static completion_verdict verdict_for(const MPI_Status& native,
                                                           int rc) noexcept {
-        if (rc == MPI_SUCCESS)
+        if (rc == MPI_SUCCESS) [[likely]]
           return completion_verdict::success;
-        if (rc == MPI_ERR_IN_STATUS) {
+        if (rc == MPI_ERR_IN_STATUS) [[unlikely]] {
           // Only the per-slot MPI_ERROR field is meaningful for an array completion. A
           // PENDING slot has neither failed nor completed and must not be committed.
-          if (native.MPI_ERROR == MPI_SUCCESS)
+          if (native.MPI_ERROR == MPI_SUCCESS) [[likely]]
             return completion_verdict::success;
           if (native.MPI_ERROR == MPI_ERR_PENDING)
             return completion_verdict::pending;
@@ -982,7 +982,7 @@ namespace mp1 {
 
     MPI_Status native{};
     const int rc = MPI_Wait(&h_, &native);
-    if (rc != MPI_SUCCESS) {
+    if (rc != MPI_SUCCESS) [[unlikely]] {
       // MPI 4.1 3.7.3: MPI_Wait takes a single status, so the error code is the function
       // result and native.MPI_ERROR is undefined.
       detail::throw_single_completion_error(*this, rc, "MPI_Wait", true);
@@ -992,7 +992,7 @@ namespace mp1 {
     std::exception_ptr failure;
     const status result = detail::finish_committed(*this, detail::completion_verdict::success,
                                                    native, false, failure);
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     return result;
   }
@@ -1005,7 +1005,7 @@ namespace mp1 {
     MPI_Status native{};
     int flag{0};
     const int rc = MPI_Test(&h_, &flag, &native);
-    if (rc != MPI_SUCCESS) {
+    if (rc != MPI_SUCCESS) [[unlikely]] {
       // MPI_Test with flag == 0 leaves the handle state unknown even for a persistent request;
       // with flag != 0 the completed persistent request can stay valid/inactive. The thrown
       // code is the function result: native.MPI_ERROR is undefined for a single-status
@@ -1020,7 +1020,7 @@ namespace mp1 {
     std::exception_ptr failure;
     const status result = detail::finish_committed(*this, detail::completion_verdict::success,
                                                    native, false, failure);
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     return result;
   }
@@ -1041,7 +1041,7 @@ namespace mp1 {
   inline void request::cancel() {
     // "broken" is terminal and observable even when the broken state was reached by abandoning
     // the MPI_Request handle: this must throw before the null-handle no-op check.
-    if (state_ == request_state::broken) {
+    if (state_ == request_state::broken) [[unlikely]] {
       detail::fail_with<std::logic_error>("mp1::request::cancel",
                                           std::source_location::current(),
                                           "the request is broken and cannot be cancelled");
@@ -1049,7 +1049,7 @@ namespace mp1 {
     // An invalid (default/moved-from/released) request is a plain null request: no-op.
     if (not is_valid())
       return;
-    if (not cancelable()) {
+    if (not cancelable()) [[unlikely]] {
       // Valid but not cancelable in this state: inactive persistent, collective, file/RMA/
       // flush, send-recv. State/policy misuse is std::logic_error.
       detail::fail_with<std::logic_error>("mp1::request::cancel",
@@ -1061,23 +1061,23 @@ namespace mp1 {
   }
 
   inline void request::start() {
-    if (state_ == request_state::broken)
+    if (state_ == request_state::broken) [[unlikely]]
       detail::fail_with<std::logic_error>(
           "mp1::request::start", std::source_location::current(), "the request is broken");
-    if (not persistent_)
+    if (not persistent_) [[unlikely]]
       throw_invalid("mp1::request::start", "not a persistent request");
-    if (not is_valid())
+    if (not is_valid()) [[unlikely]]
       throw_invalid("mp1::request::start", "invalid request");
-    if (state_ == request_state::active)
+    if (state_ == request_state::active) [[unlikely]]
       detail::fail_with<std::logic_error>(
           "mp1::request::start", std::source_location::current(), "request is already active");
-    if (state_ != request_state::inactive) {
+    if (state_ != request_state::inactive) [[unlikely]] {
       throw_invalid("mp1::request::start", "request is not in the inactive persistent state");
     }
     detail::require_mpi("mp1::request::start");
     detail::request_access::prepare_start(*this);
     const int rc = MPI_Start(&h_);
-    if (rc != MPI_SUCCESS) {
+    if (rc != MPI_SUCCESS) [[unlikely]] {
       detail::request_access::abandon_slot(*this);
       throw mpi_error{rc, "MPI_Start"};
     }
@@ -1131,7 +1131,7 @@ namespace mp1 {
 
     detail::note_dropped_request();
 
-    if (not detail::mpi_active()) {
+    if (not detail::mpi_active()) [[unlikely]] {
       detail::note_abandoned_handle();
       payload_.reset();
       h_ = MPI_REQUEST_NULL;
@@ -1197,7 +1197,7 @@ namespace mp1 {
           if (payload_) {
             MPI_Status cancel_status = native;
             int flag{0};
-            if (MPI_Test_cancelled(&cancel_status, &flag) != MPI_SUCCESS)
+            if (MPI_Test_cancelled(&cancel_status, &flag) != MPI_SUCCESS) [[unlikely]]
               cancelled = true;  // unknown: never unpack on an unverifiable completion
             else
               cancelled = flag != 0;
@@ -1275,7 +1275,7 @@ namespace mp1 {
     detail::request_batch batch{requests, "mp1::wait_all", size};
     std::vector<status> result(size);  // preflight: no allocation after MPI returns
     const int rc = MPI_Waitall(batch.count(), batch.handles(), batch.native());
-    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) {
+    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) [[unlikely]] {
       // A function-level error is not MPI_ERR_IN_STATUS: MPI does not report which slots the
       // call touched.  Inactive slots are passed to MPI as null request entries (MPI 4.1
       // §3.7.5 allows null/inactive entries), so MPI cannot have modified their wrappers;
@@ -1290,7 +1290,7 @@ namespace mp1 {
     // classifying: a PENDING slot is not a completed operation.
     std::exception_ptr failure;
     batch.finish_all(rc, result, failure);
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     return result;
   }
@@ -1308,11 +1308,11 @@ namespace mp1 {
     if (flag == 0) {
       // No request is modified. MPI_ERR_IN_STATUS with flag == false is contradictory; treat
       // it as a function-level error and leave every slot untouched.
-      if (rc == MPI_SUCCESS)
+      if (rc == MPI_SUCCESS) [[likely]]
         return std::nullopt;
       throw mpi_error{rc, "mp1::test_all: MPI_Testall"};
     }
-    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) {
+    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) [[unlikely]] {
       // Same policy as wait_all: only active slots can have been touched by the call.
       batch.abandon_active();
       throw mpi_error{rc, "mp1::test_all: MPI_Testall"};
@@ -1322,7 +1322,7 @@ namespace mp1 {
     // finish_all is defensive here; it is applied identically through the shared transaction.
     std::exception_ptr failure;
     batch.finish_all(rc, result, failure);
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     return result;
   }
@@ -1338,11 +1338,11 @@ namespace mp1 {
     MPI_Status native{};
     const int rc = MPI_Waitany(batch.count(), batch.handles(), &index, &native);
 
-    if (rc == MPI_SUCCESS) {
+    if (rc == MPI_SUCCESS) [[likely]] {
       if (index == MPI_UNDEFINED)
         return completion{MPI_UNDEFINED, status{}};
       if (index < 0 or static_cast<std::size_t>(index) >= size or
-          not batch.was_active(static_cast<std::size_t>(index))) {
+          not batch.was_active(static_cast<std::size_t>(index))) [[unlikely]] {
         batch.abandon_active();
         detail::fail_with<std::logic_error>("mp1::wait_any", std::source_location::current(),
                                             "MPI returned an invalid completion index");
@@ -1353,19 +1353,19 @@ namespace mp1 {
       status result{};
       result = detail::finish_committed(batch.slot(slot), detail::completion_verdict::success,
                                         native, false, failure);
-      if (failure)
+      if (failure) [[unlikely]]
         std::rethrow_exception(failure);
       return completion{index, result};
     }
 
     // A single-status completion error: only the returned index was completed/deallocated.
     // Every other slot is untouched (MPI 4.1 section 3.7.5, pp. 84-85).
-    if (index == MPI_UNDEFINED) {
+    if (index == MPI_UNDEFINED) [[unlikely]] {
       // Function-level error; no slot is known completed.
       throw mpi_error{rc, "mp1::wait_any: MPI_Waitany"};
     }
     if (index < 0 or static_cast<std::size_t>(index) >= size or
-        not batch.was_active(static_cast<std::size_t>(index))) {
+        not batch.was_active(static_cast<std::size_t>(index))) [[unlikely]] {
       batch.abandon_active();
       detail::fail_with<std::logic_error>("mp1::wait_any", std::source_location::current(),
                                           "MPI returned an invalid completion index");
@@ -1380,7 +1380,7 @@ namespace mp1 {
     status ignored{};
     (void)detail::finish_committed(batch.slot(slot), detail::completion_verdict::error, native,
                                    false, failure);
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     throw mpi_error{code, "mp1::wait_any: MPI_Waitany", static_cast<int>(slot)};
   }
@@ -1397,14 +1397,14 @@ namespace mp1 {
     MPI_Status native{};
     const int rc = MPI_Testany(batch.count(), batch.handles(), &index, &flag, &native);
 
-    if (rc == MPI_SUCCESS) {
+    if (rc == MPI_SUCCESS) [[likely]] {
       // The outputs are defined only for a successful call (MPI 4.1 9.4).
       if (flag == 0)
         return std::nullopt;  // no operation completed; no request is modified
       if (index == MPI_UNDEFINED)
         return completion{MPI_UNDEFINED, status{}};  // the list has no active handles
       if (index < 0 or static_cast<std::size_t>(index) >= size or
-          not batch.was_active(static_cast<std::size_t>(index))) {
+          not batch.was_active(static_cast<std::size_t>(index))) [[unlikely]] {
         batch.abandon_active();
         detail::fail_with<std::logic_error>("mp1::test_any", std::source_location::current(),
                                             "MPI returned an invalid completion index");
@@ -1416,7 +1416,7 @@ namespace mp1 {
       status result{};
       result = detail::finish_committed(batch.slot(slot), detail::completion_verdict::success,
                                         native, false, failure);
-      if (failure)
+      if (failure) [[unlikely]]
         std::rethrow_exception(failure);
       return completion{index, result};
     }
@@ -1427,10 +1427,10 @@ namespace mp1 {
     // MPI_UNDEFINED by this wrapper and validated below) identifies the slot that must be
     // committed. When no index is reported the call was function-level: no slot is known
     // completed and every wrapper state is left untouched.
-    if (index == MPI_UNDEFINED)
+    if (index == MPI_UNDEFINED) [[unlikely]]
       throw mpi_error{rc, "mp1::test_any: MPI_Testany"};
     if (index < 0 or static_cast<std::size_t>(index) >= size or
-        not batch.was_active(static_cast<std::size_t>(index))) {
+        not batch.was_active(static_cast<std::size_t>(index))) [[unlikely]] {
       batch.abandon_active();
       detail::fail_with<std::logic_error>("mp1::test_any", std::source_location::current(),
                                           "MPI returned an invalid completion index");
@@ -1442,7 +1442,7 @@ namespace mp1 {
     status ignored{};
     (void)detail::finish_committed(batch.slot(slot), detail::completion_verdict::error, native,
                                    false, failure);
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     throw mpi_error{rc, "mp1::test_any: MPI_Testany", static_cast<int>(slot)};
   }
@@ -1464,24 +1464,24 @@ namespace mp1 {
     int outcount{0};
     const int rc =
         MPI_Waitsome(batch.count(), batch.handles(), &outcount, indices.data(), batch.native());
-    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) {
+    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) [[unlikely]] {
       // Function-level error: no completion index is reported; inactive slots were passed as
       // null request entries and stay untouched, active slots are abandoned (leaked) because
       // their state is unknown.
       batch.abandon_active();
       throw mpi_error{rc, "mp1::wait_some: MPI_Waitsome"};
     }
-    if (outcount == MPI_UNDEFINED) {
+    if (outcount == MPI_UNDEFINED) [[unlikely]] {
       // MPI_UNDEFINED means "no active handles" and is defined only for MPI_SUCCESS. An
       // MPI_ERR_IN_STATUS with an undefined outcount is contradictory: no OUT value is valid,
       // so the touched slots are unknown and the active slots are abandoned (leaked) before
       // the function-level error is reported.
-      if (rc == MPI_SUCCESS)
+      if (rc == MPI_SUCCESS) [[likely]]
         return {};
       batch.abandon_active();
       throw mpi_error{rc, "mp1::wait_some: MPI_Waitsome"};
     }
-    if (outcount < 0 or static_cast<std::size_t>(outcount) > size) {
+    if (outcount < 0 or static_cast<std::size_t>(outcount) > size) [[unlikely]] {
       batch.abandon_active();
       detail::fail_with<std::logic_error>("mp1::wait_some", std::source_location::current(),
                                           "MPI returned an invalid completion count");
@@ -1490,7 +1490,7 @@ namespace mp1 {
     for (int j = 0; j < outcount; ++j) {
       const int index = indices[static_cast<std::size_t>(j)];
       if (index < 0 or static_cast<std::size_t>(index) >= size or
-          not batch.was_active(static_cast<std::size_t>(index))) {
+          not batch.was_active(static_cast<std::size_t>(index))) [[unlikely]] {
         batch.abandon_active();
         detail::fail_with<std::logic_error>("mp1::wait_some", std::source_location::current(),
                                             "MPI returned an invalid completion index");
@@ -1513,10 +1513,10 @@ namespace mp1 {
           batch.slot(slot), slot_verdict, batch.native_at(static_cast<std::size_t>(j)),
           rc == MPI_ERR_IN_STATUS, slot_failure);
       result.emplace_back(static_cast<int>(slot), slot_status);
-      if (slot_failure and not failure)
+      if (slot_failure and not failure) [[unlikely]]
         failure = slot_failure;
     }
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     return result;
   }
@@ -1538,27 +1538,27 @@ namespace mp1 {
     int outcount{0};
     const int rc =
         MPI_Testsome(batch.count(), batch.handles(), &outcount, indices.data(), batch.native());
-    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) {
+    if (rc != MPI_SUCCESS and rc != MPI_ERR_IN_STATUS) [[unlikely]] {
       batch.abandon_active();
       throw mpi_error{rc, "mp1::test_some: MPI_Testsome"};
     }
-    if (outcount == MPI_UNDEFINED) {
+    if (outcount == MPI_UNDEFINED) [[unlikely]] {
       // Only MPI_SUCCESS defines MPI_UNDEFINED, which means "no active handles";
       // MPI_ERR_IN_STATUS with an undefined outcount is contradictory: no OUT value is valid,
       // so the touched slots are unknown and the active slots are abandoned (leaked) before the
       // function-level error is reported.
-      if (rc == MPI_SUCCESS)
+      if (rc == MPI_SUCCESS) [[likely]]
         return std::nullopt;
       batch.abandon_active();
       throw mpi_error{rc, "mp1::test_some: MPI_Testsome"};
     }
-    if (outcount < 0 or static_cast<std::size_t>(outcount) > size) {
+    if (outcount < 0 or static_cast<std::size_t>(outcount) > size) [[unlikely]] {
       batch.abandon_active();
       detail::fail_with<std::logic_error>("mp1::test_some", std::source_location::current(),
                                           "MPI returned an invalid completion count");
     }
     if (outcount == 0) {
-      if (rc == MPI_ERR_IN_STATUS) {
+      if (rc == MPI_ERR_IN_STATUS) [[unlikely]] {
         // Contradictory: no index is reported; leave every slot untouched.
         throw mpi_error{rc, "mp1::test_some: MPI_Testsome"};
       }
@@ -1568,7 +1568,7 @@ namespace mp1 {
     for (int j = 0; j < outcount; ++j) {
       const int index = indices[static_cast<std::size_t>(j)];
       if (index < 0 or static_cast<std::size_t>(index) >= size or
-          not batch.was_active(static_cast<std::size_t>(index))) {
+          not batch.was_active(static_cast<std::size_t>(index))) [[unlikely]] {
         batch.abandon_active();
         detail::fail_with<std::logic_error>("mp1::test_some", std::source_location::current(),
                                             "MPI returned an invalid completion index");
@@ -1591,10 +1591,10 @@ namespace mp1 {
           batch.slot(slot), slot_verdict, batch.native_at(static_cast<std::size_t>(j)),
           rc == MPI_ERR_IN_STATUS, slot_failure);
       result.emplace_back(static_cast<int>(slot), slot_status);
-      if (slot_failure and not failure)
+      if (slot_failure and not failure) [[unlikely]]
         failure = slot_failure;
     }
-    if (failure)
+    if (failure) [[unlikely]]
       std::rethrow_exception(failure);
     return result;
   }
@@ -1701,21 +1701,21 @@ namespace mp1 {
     // invalid/released slot is std::invalid_argument.
     for (std::size_t i = 0; i < requests.size(); ++i) {
       request& r = requests[i];
-      if (detail::request_access::state(r) == request_state::broken)
+      if (detail::request_access::state(r) == request_state::broken) [[unlikely]]
         detail::fail_as<std::logic_error>({"mp1::start_all"}, std::source_location::current(),
                                           "request slot {} is broken", i);
-      if (detail::request_access::state(r) == request_state::active)
+      if (detail::request_access::state(r) == request_state::active) [[unlikely]]
         detail::fail_as<std::logic_error>({"mp1::start_all"}, std::source_location::current(),
                                           "request slot {} is already active", i);
-      if (not detail::request_access::persistent(r))
+      if (not detail::request_access::persistent(r)) [[unlikely]]
         detail::fail_as<std::invalid_argument>(
             {"mp1::start_all"}, std::source_location::current(),
             "every request must be a persistent request (slot {})", i);
-      if (not detail::request_access::valid(r))
+      if (not detail::request_access::valid(r)) [[unlikely]]
         detail::fail_as<std::invalid_argument>({"mp1::start_all"},
                                                std::source_location::current(),
                                                "request slot {} is invalid", i);
-      if (detail::request_access::state(r) != request_state::inactive)
+      if (detail::request_access::state(r) != request_state::inactive) [[unlikely]]
         detail::fail_as<std::invalid_argument>({"mp1::start_all"},
                                                std::source_location::current(),
                                                "request slot {} is not inactive", i);
@@ -1734,7 +1734,7 @@ namespace mp1 {
       handles[i] = detail::request_access::handle(requests[i]);
 
     const int rc = MPI_Startall(count, handles.data());
-    if (rc != MPI_SUCCESS) {
+    if (rc != MPI_SUCCESS) [[unlikely]] {
       for (auto& request : requests)
         detail::request_access::abandon_slot(request);
       throw mpi_error{rc, "mp1::start_all: MPI_Startall"};

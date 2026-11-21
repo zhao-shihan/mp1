@@ -30,12 +30,12 @@ namespace mp1 {
 
     [[nodiscard]] inline MPI_Count checked_mpi_count_from_aint(MPI_Aint value,
                                                                const context& ctx) {
-      if (value < 0) {
+      if (value < 0) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                                "byte stride {} is negative",
                                                static_cast<long long>(value));
       }
-      if (not std::in_range<MPI_Count>(value)) {
+      if (not std::in_range<MPI_Count>(value)) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "byte stride does not fit MPI_Count");
       }
@@ -43,7 +43,7 @@ namespace mp1 {
     }
 
     [[nodiscard]] inline MPI_Aint checked_aint_value(count_t value, const context& ctx) {
-      if (not std::in_range<MPI_Aint>(value)) {
+      if (not std::in_range<MPI_Aint>(value)) [[unlikely]] {
         detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                                "value does not fit MPI_Aint");
       }
@@ -99,9 +99,9 @@ namespace mp1 {
     [[nodiscard]] inline repeated_facts repeat_facts(const map_element_facts& child,
                                                      count_t count, count_t stride,
                                                      count_t base_extent, const context& ctx) {
-      if (count < 0)
+      if (count < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative repetition count");
-      if (stride < 0)
+      if (stride < 0) [[unlikely]]
         throw_invalid(ctx.operation, "negative byte stride");
       if (count == 0 or child.byte_size == 0)
         return repeated_facts{};
@@ -612,11 +612,11 @@ namespace mp1 {
       void add(count_t size, count_t subsize, count_t start)
       requires(std::is_same_v<Tag, subarray_parameter_tag>)
       {
-        if (size < 0)
+        if (size < 0) [[unlikely]]
           throw_invalid(parameter_traits<Tag>::operation, "negative dimension size");
-        if (subsize < 0 or subsize > size)
+        if (subsize < 0 or subsize > size) [[unlikely]]
           throw_invalid(parameter_traits<Tag>::operation, "subsize outside [0, size]");
-        if (start < 0 or start > size - subsize)
+        if (start < 0 or start > size - subsize) [[unlikely]]
           throw_invalid(parameter_traits<Tag>::operation, "start outside [0, size - subsize]");
         entries_.push_back({size, subsize, start});
       }
@@ -636,16 +636,16 @@ namespace mp1 {
     private:
       template<class Displacement>
       void require_pair(count_t blocklength, Displacement displacement) {
-        if (blocklength < 0)
+        if (blocklength < 0) [[unlikely]]
           throw_invalid(parameter_traits<Tag>::operation, "negative blocklength");
-        if (displacement < 0)
+        if (displacement < 0) [[unlikely]]
           throw_invalid(parameter_traits<Tag>::operation, "negative displacement");
         entries_.emplace_back(blocklength, displacement);
       }
 
       template<class Displacement>
       void require_displacement(Displacement displacement) {
-        if (displacement < 0)
+        if (displacement < 0) [[unlikely]]
           throw_invalid(parameter_traits<Tag>::operation, "negative displacement");
         entries_.push_back(displacement);
       }
@@ -929,7 +929,8 @@ namespace mp1 {
       const auto& entries = parameter.entries_;
       if (entries.empty())
         return contiguous(0);
-      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid("layout<T>::hindexed", "too many blocks for int");
       }
       const detail::datatype_info& base = detail::datatype_info_of<T>();
@@ -966,7 +967,8 @@ namespace mp1 {
       const auto& entries = parameter.entries_;
       if (entries.empty())
         return contiguous(0);
-      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid("layout<T>::hindexed", "too many blocks for int");
       }
       const detail::datatype_info& base = detail::datatype_info_of<T>();
@@ -1000,7 +1002,7 @@ namespace mp1 {
     [[nodiscard]] static layout indexed_block(count_t blocklength,
                                               const indexed_block_parameter& parameter) {
       detail::require_mpi("mp1::layout<T>::indexed_block");
-      if (blocklength < 0) {
+      if (blocklength < 0) [[unlikely]] {
         throw_invalid("layout<T>::indexed_block", "negative blocklength");
       }
       const auto& entries = parameter.entries_;
@@ -1035,7 +1037,7 @@ namespace mp1 {
                                               const layout& block) {
       detail::require_mpi("mp1::layout<T>::indexed_block(block)");
       require_valid_block(block, "layout<T>::indexed_block");
-      if (blocklength < 0) {
+      if (blocklength < 0) [[unlikely]] {
         throw_invalid("layout<T>::indexed_block", "negative blocklength");
       }
       const auto& entries = parameter.entries_;
@@ -1069,13 +1071,14 @@ namespace mp1 {
     [[nodiscard]] static layout hindexed_block(count_t blocklength,
                                                const hindexed_block_parameter& parameter) {
       detail::require_mpi("mp1::layout<T>::hindexed_block");
-      if (blocklength < 0) {
+      if (blocklength < 0) [[unlikely]] {
         throw_invalid("layout<T>::hindexed_block", "negative blocklength");
       }
       const auto& entries = parameter.entries_;
       if (entries.empty())
         return contiguous(0);
-      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid("layout<T>::hindexed_block", "too many blocks for int");
       }
       const detail::datatype_info& base = detail::datatype_info_of<T>();
@@ -1105,13 +1108,14 @@ namespace mp1 {
                                                const layout& block) {
       detail::require_mpi("mp1::layout<T>::hindexed_block(block)");
       require_valid_block(block, "layout<T>::hindexed_block");
-      if (blocklength < 0) {
+      if (blocklength < 0) [[unlikely]] {
         throw_invalid("layout<T>::hindexed_block", "negative blocklength");
       }
       const auto& entries = parameter.entries_;
       if (entries.empty())
         return contiguous(0);
-      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (entries.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid("layout<T>::hindexed_block", "too many blocks for int");
       }
       const detail::datatype_info& base = detail::datatype_info_of<T>();
@@ -1142,7 +1146,8 @@ namespace mp1 {
       const auto& dimensions = parameter.entries_;
       if (dimensions.empty())
         return contiguous(0);
-      if (dimensions.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (dimensions.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid("layout<T>::subarray", "too many dimensions");
       }
       const detail::datatype_info& base = detail::datatype_info_of<T>();
@@ -1157,12 +1162,13 @@ namespace mp1 {
         const count_t size = dimension[0];
         const count_t subsize = dimension[1];
         const count_t start = dimension[2];
-        if (size < 0 or subsize < 0 or subsize > size or start < 0 or start > size - subsize) {
+        if (size < 0 or subsize < 0 or subsize > size or start < 0 or start > size - subsize)
+            [[unlikely]] {
           throw_invalid("layout<T>::subarray", "invalid subarray geometry");
         }
         if (size > static_cast<count_t>(std::numeric_limits<int>::max()) or
             subsize > static_cast<count_t>(std::numeric_limits<int>::max()) or
-            start > static_cast<count_t>(std::numeric_limits<int>::max())) {
+            start > static_cast<count_t>(std::numeric_limits<int>::max())) [[unlikely]] {
           throw_invalid("layout<T>::subarray", "dimension does not fit int");
         }
         if (subsize == 0)
@@ -1197,7 +1203,8 @@ namespace mp1 {
       const auto& dimensions = parameter.entries_;
       if (dimensions.empty())
         return contiguous(0);
-      if (dimensions.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+      if (dimensions.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid("layout<T>::subarray", "too many dimensions");
       }
       const detail::datatype_info& base = detail::datatype_info_of<T>();
@@ -1212,12 +1219,13 @@ namespace mp1 {
         const count_t size = dimension[0];
         const count_t subsize = dimension[1];
         const count_t start = dimension[2];
-        if (size < 0 or subsize < 0 or subsize > size or start < 0 or start > size - subsize) {
+        if (size < 0 or subsize < 0 or subsize > size or start < 0 or start > size - subsize)
+            [[unlikely]] {
           throw_invalid("layout<T>::subarray", "invalid subarray geometry");
         }
         if (size > static_cast<count_t>(std::numeric_limits<int>::max()) or
             subsize > static_cast<count_t>(std::numeric_limits<int>::max()) or
-            start > static_cast<count_t>(std::numeric_limits<int>::max())) {
+            start > static_cast<count_t>(std::numeric_limits<int>::max())) [[unlikely]] {
           throw_invalid("layout<T>::subarray", "dimension does not fit int");
         }
         if (subsize == 0)
@@ -1320,10 +1328,10 @@ namespace mp1 {
     // overlap) are preserved. A negative extent is rejected; lb may be negative. MPI 4.1
     // §5.1.6: markers affect extent, never the typemap entries.
     void byte_resize(count_t lb, count_t extent) {
-      if (not is_valid()) {
+      if (not is_valid()) [[unlikely]] {
         throw_invalid("layout<T>::byte_resize", "invalid layout");
       }
-      if (extent < 0) {
+      if (extent < 0) [[unlikely]] {
         throw_invalid("layout<T>::byte_resize", "negative extent");
       }
       detail::require_mpi("mp1::layout<T>::byte_resize");
@@ -1392,13 +1400,13 @@ namespace mp1 {
     [[nodiscard]] static layout from_raw(MPI_Datatype type, count_t elements,
                                          layout_facts facts = {}) {
       detail::require_mpi("mp1::layout<T>::from_raw");
-      if (type == MPI_DATATYPE_NULL) {
+      if (type == MPI_DATATYPE_NULL) [[unlikely]] {
         throw_invalid("layout<T>::from_raw", "MPI_DATATYPE_NULL handle");
       }
-      if (elements < 0) {
+      if (elements < 0) [[unlikely]] {
         throw_invalid("layout<T>::from_raw", "negative application count");
       }
-      if (not detail::is_adoptable_derived_datatype(type)) {
+      if (not detail::is_adoptable_derived_datatype(type)) [[unlikely]] {
         throw_invalid("layout<T>::from_raw",
                       "a predefined named or unnamed datatype (or a handle whose combiner is "
                       "not a derived-datatype constructor) is process-global or not provably "
@@ -1430,7 +1438,8 @@ namespace mp1 {
     // MPI_Type_create_hindexed / MPI_Type_create_hindexed_block take the blocklength as an
     // int in the C binding; count_t is wider, so reject an out-of-range value before the call.
     [[nodiscard]] static int checked_blocklength_int(count_t value, const context& ctx) {
-      if (value < 0 or value > static_cast<count_t>(std::numeric_limits<int>::max())) {
+      if (value < 0 or value > static_cast<count_t>(std::numeric_limits<int>::max()))
+          [[unlikely]] {
         throw_invalid(ctx.operation, "blocklength does not fit int");
       }
       return static_cast<int>(value);
@@ -1504,13 +1513,13 @@ namespace mp1 {
     }
 
     static void require_valid_block(const layout& block, const context& ctx) {
-      if (not block.is_valid()) {
+      if (not block.is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "block layout is invalid");
       }
     }
 
     void require_valid(const context& ctx) const {
-      if (not is_valid()) {
+      if (not is_valid()) [[unlikely]] {
         throw_invalid(ctx.operation, "invalid layout (no MPI datatype)");
       }
     }

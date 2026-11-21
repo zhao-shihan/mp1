@@ -15,6 +15,10 @@
 // check site inside the library (see mp1::fail / mp1::require / mp1::throw_invalid in
 // error.hpp).  error.hpp is the MPI-version boundary for error formatting; including it here
 // keeps this header self-contained without a second <mpi.h> include.
+//
+// Failure branches are marked [[unlikely]]: a passing check is the common path, and the hint
+// biases branch layout away from the diagnostic and throw code.  The family headers use the
+// same annotation at their local check sites.
 #include "mp1/impl/error.hpp"
 
 #include <source_location>
@@ -31,7 +35,7 @@ namespace mp1::detail {
   /// line that tested the MPI return code.
   inline void check_mpi(int rc, const context& ctx, int slot = -1,
                         std::source_location where = std::source_location::current()) {
-    if (rc != MPI_SUCCESS)
+    if (rc != MPI_SUCCESS) [[unlikely]]
       throw ::mp1::mpi_error{rc, ctx.operation, slot, where};
   }
 

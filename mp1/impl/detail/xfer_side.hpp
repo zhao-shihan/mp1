@@ -106,12 +106,12 @@ namespace mp1::detail {
   }
 
   [[nodiscard]] inline std::size_t xfer_size(MPI_Count value, const context& ctx) {
-    if (value < 0) {
+    if (value < 0) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "negative staging size");
     }
     if (static_cast<unsigned long long>(value) >
-        static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+        static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "staging size does not fit std::size_t");
     }
@@ -120,7 +120,7 @@ namespace mp1::detail {
 
   [[nodiscard]] inline MPI_Aint xfer_aint(MPI_Count value, const context& ctx) {
     if (value < static_cast<MPI_Count>(std::numeric_limits<MPI_Aint>::min()) or
-        value > static_cast<MPI_Count>(std::numeric_limits<MPI_Aint>::max())) {
+        value > static_cast<MPI_Count>(std::numeric_limits<MPI_Aint>::max())) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "displacement does not fit MPI_Aint");
     }
@@ -132,7 +132,7 @@ namespace mp1::detail {
   // displacement.
   [[nodiscard]] inline MPI_Aint xfer_element_displacement(count_t elements,
                                                           const context& ctx) {
-    if (elements < 0) {
+    if (elements < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "negative displacement {}", elements);
     }
@@ -147,7 +147,7 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_Aint xfer_dense_displacement(count_t elements, count_t extent,
                                                         const context& ctx) {
     const MPI_Aint displacement = xfer_element_displacement(elements, ctx);
-    if (extent < 0) {
+    if (extent < 0) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "native datatype has a negative extent");
     }
@@ -159,7 +159,7 @@ namespace mp1::detail {
   // The byte shift of a staged block base from the caller's base pointer: d_i * extent.
   [[nodiscard]] inline count_t xfer_caller_byte_offset(count_t elements, count_t extent,
                                                        const context& ctx) {
-    if (elements < 0) {
+    if (elements < 0) [[unlikely]] {
       detail::fail_as<std::invalid_argument>(ctx, std::source_location::current(),
                                              "negative displacement {}", elements);
     }
@@ -169,7 +169,7 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_Aint xfer_add_aint(MPI_Aint left, MPI_Aint right,
                                               const context& ctx) {
     if ((right > 0 and left > std::numeric_limits<MPI_Aint>::max() - right) or
-        (right < 0 and left < std::numeric_limits<MPI_Aint>::min() - right)) {
+        (right < 0 and left < std::numeric_limits<MPI_Aint>::min() - right)) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "displacement overflow");
     }
@@ -179,7 +179,7 @@ namespace mp1::detail {
   [[nodiscard]] inline MPI_Count xfer_add_count(MPI_Count left, MPI_Count right,
                                                 const context& ctx) {
     if ((right > 0 and left > std::numeric_limits<MPI_Count>::max() - right) or
-        (right < 0 and left < std::numeric_limits<MPI_Count>::min() - right)) {
+        (right < 0 and left < std::numeric_limits<MPI_Count>::min() - right)) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "element count overflow");
     }
@@ -188,13 +188,13 @@ namespace mp1::detail {
 
   [[nodiscard]] inline MPI_Count checked_bytes(MPI_Count elements, MPI_Count element_size,
                                                const context& ctx) {
-    if (elements < 0)
+    if (elements < 0) [[unlikely]]
       throw_invalid(ctx.operation, "negative count");
-    if (element_size < 0)
+    if (element_size < 0) [[unlikely]]
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "negative type size");
     if (elements != 0 and element_size != 0 and
-        elements > std::numeric_limits<MPI_Count>::max() / element_size) {
+        elements > std::numeric_limits<MPI_Count>::max() / element_size) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "byte count overflow");
     }
@@ -215,7 +215,7 @@ namespace mp1::detail {
   // reported position fits that allocation.
   [[nodiscard]] inline MPI_Count checked_pack_position(MPI_Count position, MPI_Count capacity,
                                                        const context& ctx) {
-    if (position < 0 or position > capacity) {
+    if (position < 0 or position > capacity) [[unlikely]] {
       detail::fail_as<std::runtime_error>(
           ctx, std::source_location::current(),
           "MPI_Pack_c reported {} packed bytes with a staging capacity of {}",
@@ -292,13 +292,13 @@ namespace mp1::detail {
   template<class T>
   [[nodiscard]] MPI_Count pack_block(const T* src, const layout<T>& l, void* dst,
                                      MPI_Count capacity, MPI_Comm comm, const context& ctx) {
-    if (not l.is_valid())
+    if (not l.is_valid()) [[unlikely]]
       throw_invalid(ctx.operation, "invalid layout");
     const MPI_Count exact = l.byte_size();
     if (exact == 0)
       return 0;
     const T* base = staged_ptr(src, l, ctx);
-    if (capacity < exact) {
+    if (capacity < exact) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx.operation, std::source_location::current(),
           "staging buffer is smaller than the exact packed size");
@@ -312,9 +312,9 @@ namespace mp1::detail {
   [[nodiscard]] MPI_Count pack_block(const T* src, const layout<T>& l, MPI_Count repetitions,
                                      void* dst, MPI_Count capacity, MPI_Comm comm,
                                      const context& ctx) {
-    if (not l.is_valid())
+    if (not l.is_valid()) [[unlikely]]
       throw_invalid(ctx.operation, "invalid layout");
-    if (repetitions < 0) {
+    if (repetitions < 0) [[unlikely]] {
       throw_invalid(ctx.operation, "negative block repetition count");
     }
     // `capacity` is a byte capacity from MPI_Pack_size_c, so the exact lower bound is
@@ -326,7 +326,7 @@ namespace mp1::detail {
     if (exact == 0)
       return 0;
     const T* base = staged_ptr(src, l, ctx);
-    if (capacity < exact) {
+    if (capacity < exact) [[unlikely]] {
       detail::fail_with<std::runtime_error>(
           ctx.operation, std::source_location::current(),
           "staging buffer is smaller than the exact packed size");
@@ -355,7 +355,7 @@ namespace mp1::detail {
                          const context& ctx) {
     if (repetitions == 0)
       return;
-    if (not block.is_valid())
+    if (not block.is_valid()) [[unlikely]]
       throw_invalid(ctx.operation, "invalid block layout");
     if (block.byte_size() == 0)
       return;
@@ -364,7 +364,7 @@ namespace mp1::detail {
     const MPI_Count elements = checked_bytes(static_cast<MPI_Count>(repetitions),
                                              static_cast<MPI_Count>(block.size()), ctx);
     const std::size_t offset = static_cast<std::size_t>(flat_offset);
-    if (flat.size() < offset + static_cast<std::size_t>(elements)) {
+    if (flat.size() < offset + static_cast<std::size_t>(elements)) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "staging vector too small");
     }
@@ -372,7 +372,7 @@ namespace mp1::detail {
     check_mpi(MPI_Unpack_c(scratch.data(), packed, &position, flat.data() + offset, elements,
                            native_datatype<T>(), MPI_COMM_SELF),
               ctx);
-    if (position != packed) {
+    if (position != packed) [[unlikely]] {
       detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
                                             "flat staging consumed the wrong byte count");
     }
@@ -388,14 +388,14 @@ namespace mp1::detail {
                            const context& ctx) {
     if (repetitions == 0)
       return;
-    if (not block.is_valid())
+    if (not block.is_valid()) [[unlikely]]
       throw_invalid(ctx.operation, "invalid block layout");
     if (block.byte_size() == 0)
       return;
     const MPI_Count elements = checked_bytes(static_cast<MPI_Count>(repetitions),
                                              static_cast<MPI_Count>(block.size()), ctx);
     const std::size_t offset = static_cast<std::size_t>(flat_offset);
-    if (flat.size() < offset + static_cast<std::size_t>(elements)) {
+    if (flat.size() < offset + static_cast<std::size_t>(elements)) [[unlikely]] {
       detail::fail_with<std::overflow_error>(ctx.operation, std::source_location::current(),
                                              "staging vector too small");
     }
@@ -409,7 +409,7 @@ namespace mp1::detail {
         MPI_Unpack_c(scratch.data(), position, &unpacked, dst,
                      static_cast<MPI_Count>(repetitions), block.native_handle(), MPI_COMM_SELF),
         ctx);
-    if (unpacked != position) {
+    if (unpacked != position) [[unlikely]] {
       detail::fail_with<std::runtime_error>(ctx.operation, std::source_location::current(),
                                             "layout staging consumed the wrong byte count");
     }
@@ -487,7 +487,7 @@ namespace mp1::detail {
     std::size_t covered_block = 0;
     for (std::size_t i = 0; i < intervals.size(); ++i) {
       const xfer_interval& current = intervals[i];
-      if (have_covered and current.start < covered_end) {
+      if (have_covered and current.start < covered_end) [[unlikely]] {
         if (current.block == covered_block) {
           detail::fail_as<std::invalid_argument>(
               ctx, std::source_location::current(),
@@ -567,7 +567,7 @@ namespace mp1::detail {
     // is sizeof(T) (enforced, including padded and derived layouts of the object).
     [[nodiscard]] static xfer_plan one_base(const T* base, count_t elements,
                                             transfer_direction direction) {
-      if (elements < 0) {
+      if (elements < 0) [[unlikely]] {
         throw_invalid("variable collective", "negative scalar block element count");
       }
       const datatype_info& info = base_datatype<T>();
@@ -584,7 +584,7 @@ namespace mp1::detail {
       // every provider.  The caller's element count is still validated for non-negativity.
       side.counts_[0] = info.size == 0 ? 0 : static_cast<MPI_Count>(elements);
       side.total_ = side.counts_[0];
-      if (elements != 0 and info.size != 0 and base == nullptr) {
+      if (elements != 0 and info.size != 0 and base == nullptr) [[unlikely]] {
         throw_invalid("variable collective", "null pointer for a non-empty scalar block");
       }
       side.mode_ = mode::direct_one;
@@ -615,7 +615,7 @@ namespace mp1::detail {
       // derived type.
       side.counts_[0] = l.byte_size() == 0 ? 0 : static_cast<MPI_Count>(l.size());
       side.total_ = side.counts_[0];
-      if (l.byte_size() != 0 and base == nullptr) {
+      if (l.byte_size() != 0 and base == nullptr) [[unlikely]] {
         throw_invalid("variable collective", "null pointer for a non-empty layout");
       }
       if (l.is_base_repetition()) {
@@ -641,10 +641,10 @@ namespace mp1::detail {
                                                 std::span<const count_t> caller_displs,
                                                 std::size_t n, transfer_direction direction,
                                                 prime_policy priming) {
-      if (n > ls.size()) {
+      if (n > ls.size()) [[unlikely]] {
         throw_invalid("variable collective", "fewer layouts than the required block count");
       }
-      if (not caller_displs.empty() and caller_displs.size() != n) {
+      if (not caller_displs.empty() and caller_displs.size() != n) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"variable collective"}, std::source_location::current(),
             "displacement array length {} does not match the required {}", caller_displs.size(),
@@ -664,7 +664,7 @@ namespace mp1::detail {
         require_relative(block, "mp1: variable collective: layout in a block array");
         if (direction == transfer_direction::receive)
           require_receive_layout(block, "mp1: variable collective: receive layout");
-        if (block.byte_size() != 0 and base == nullptr) {
+        if (block.byte_size() != 0 and base == nullptr) [[unlikely]] {
           throw_invalid("variable collective", "null base pointer for a non-empty block");
         }
         // A zero-byte block has an empty type signature: count N and count 0 are the same
@@ -701,7 +701,7 @@ namespace mp1::detail {
         offset =
             xfer_add_count(offset, side.counts_[i], "mp1: variable collective: staging size");
       }
-      if (total > static_cast<MPI_Count>(std::numeric_limits<count_t>::max())) {
+      if (total > static_cast<MPI_Count>(std::numeric_limits<count_t>::max())) [[unlikely]] {
         detail::fail_with<std::overflow_error>(
             "variable collective", std::source_location::current(),
             "staging element count does not fit mp1::count_t");
@@ -722,12 +722,12 @@ namespace mp1::detail {
     [[nodiscard]] static xfer_plan many_counts(const T* base, std::span<const count_t> values,
                                                std::span<const count_t> caller_displs,
                                                std::size_t n, transfer_direction direction) {
-      if (values.size() != n) {
+      if (values.size() != n) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"variable collective"}, std::source_location::current(),
             "counts length {} does not match the required {}", values.size(), n);
       }
-      if (caller_displs.size() != n) {
+      if (caller_displs.size() != n) [[unlikely]] {
         detail::fail_as<std::invalid_argument>(
             {"variable collective"}, std::source_location::current(),
             "displacement array length {} does not match the required {}", caller_displs.size(),
@@ -744,7 +744,7 @@ namespace mp1::detail {
       MPI_Count total{0};
       for (std::size_t i = 0; i < n; ++i) {
         const count_t value = values[i];
-        if (value < 0) {
+        if (value < 0) [[unlikely]] {
           detail::fail_as<std::invalid_argument>(
               {"variable collective"}, std::source_location::current(),
               "negative count {} in counts block {}", value, i);
@@ -754,7 +754,7 @@ namespace mp1::detail {
         // caller's count is still checked for negativity and the span fit is handled by the
         // builder above; see require_variable_blocks_fit.
         side.counts_[i] = info.size == 0 ? 0 : static_cast<MPI_Count>(value);
-        if (value != 0 and info.size != 0 and base == nullptr) {
+        if (value != 0 and info.size != 0 and base == nullptr) [[unlikely]] {
           throw_invalid("variable collective", "null base pointer for a non-empty block");
         }
         total =
@@ -845,7 +845,7 @@ namespace mp1::detail {
     // One copy set (one MPI_Type_dup per block) of the borrowed descriptors, owned by a
     // request payload.  A moved-in input already has metadata and is not copied again.
     [[nodiscard]] std::shared_ptr<owned_layouts<T>> copy_borrowed_metadata() const {
-      if (not uses_layout()) {
+      if (not uses_layout()) [[unlikely]] {
         detail::fail_with<std::logic_error>(
             "xfer_plan", std::source_location::current(),
             "a direct or scalar direction has no borrowed metadata");
@@ -891,12 +891,12 @@ namespace mp1::detail {
 
     [[nodiscard]] const layout<T>& single_layout() const {
       if (owned_ != nullptr) {
-        if (not owned_->single.has_value())
+        if (not owned_->single.has_value()) [[unlikely]]
           detail::fail_with<std::logic_error>("xfer_plan", std::source_location::current(),
                                               "owned metadata has no single layout");
         return *owned_->single;
       }
-      if (borrowed_one_ == nullptr)
+      if (borrowed_one_ == nullptr) [[unlikely]]
         detail::fail_with<std::logic_error>("xfer_plan", std::source_location::current(),
                                             "single layout is not available");
       return *borrowed_one_;
@@ -904,12 +904,12 @@ namespace mp1::detail {
 
     [[nodiscard]] const layout<T>& layout_at(std::size_t index) const {
       if (owned_ != nullptr) {
-        if (index >= owned_->many.size())
+        if (index >= owned_->many.size()) [[unlikely]]
           detail::fail_with<std::logic_error>("xfer_plan", std::source_location::current(),
                                               "owned metadata has no such block");
         return owned_->many[index];
       }
-      if (index >= borrowed_many_.size())
+      if (index >= borrowed_many_.size()) [[unlikely]]
         detail::fail_with<std::logic_error>("xfer_plan", std::source_location::current(),
                                             "block layout is not available");
       return borrowed_many_[index];
@@ -1029,7 +1029,7 @@ namespace mp1::detail {
     void prime_block(std::size_t index, const context& ctx) {
       if (mode_ != mode::staged_many or not receiving_)
         return;
-      if (index >= n_)
+      if (index >= n_) [[unlikely]]
         throw_invalid(ctx.operation, "block index out of range");
       prime_block_ = index;
       prime_all_ = false;
